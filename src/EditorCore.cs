@@ -111,7 +111,7 @@ namespace ReplayClip
                 mixIn.Append("[m" + i + "]");
             }
             if (enabled.Count == 1) g.Add(mixIn + "anull[mix]");
-            else g.Add(mixIn + "amix=inputs=" + enabled.Count + ":normalize=0:duration=longest[mix]");
+            else g.Add(mixIn + "amix=inputs=" + enabled.Count + ":normalize=0:duration=longest,alimiter=limit=0.95:level=false[mix]");   // Summe nie übersteuern
             outLabels.Add("[mix]");
             outNames.Add("Mix");
             if (plus)

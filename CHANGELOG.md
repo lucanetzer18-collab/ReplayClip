@@ -3,6 +3,13 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.3.0
+- **Zielordner beim Schneiden wählbar**: neben dem Original, ein Spiel-Ordner aus der Bibliothek oder ein beliebiger Ordner.
+- **Editor-Tasten frei belegbar** (Einstellungen › Tastenkürzel › Im Editor). Neu: **Esc** = zurück zur Bibliothek, **Entf** = Clip/Screenshot löschen, **Strg+S** = speichern.
+- **Kein Übersteuern mehr in der Vorschau**: eine vorhandene „Mix“-Spur ist anfangs stumm (sonst wäre alles doppelt laut), die Summe hat einen Begrenzer.
+- **Editor aufgeräumt**: Speichern-Leiste ist jetzt eine schmale Zeile, Ton- und Bild-Optionen klappen unter „Ton & Bild“ auf – mehr Platz für Video und Spuren.
+- **FFmpeg bleibt nach dem Schneiden nicht mehr hängen**: Beim Speichern/Schließen werden alle Vorschau-Prozesse der Datei beendet, das Original lässt sich danach sofort löschen.
+
 ## 2.2.6
 - Absturz beim Öffnen der Einstellungen behoben („Index lag außerhalb des Bereichs“): Die Größenanzeige beim Speicherlimit wurde manchmal aus einem Hintergrund-Thread gesetzt, bevor das Fenster fertig war. Solche Aufrufe werden jetzt sicher bis zum Fensterstart zurückgehalten (auch im Hauptfenster).
 

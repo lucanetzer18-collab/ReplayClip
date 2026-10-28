@@ -493,6 +493,9 @@ namespace ReplayClip
         /// <summary>Clip soll gelöscht werden (Editor ist dann schon zu).</summary>
         public event Action<string> DeleteRequested;
         bool background;
+        FxButton btnDelete, btnTarget;
+        string targetDir;   // Zielordner für Schnitte (null = neben dem Original)
+        volatile System.Diagnostics.Process exportProc;
         static int Px(float v) { return Theme.S(v); }
 
         VideoView video;
@@ -630,7 +633,7 @@ namespace ReplayClip
             tlCard.Controls.Add(tlArea);
 
             // Export
-            var ex = new Card { Text = "Speichern", Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0) };
+            var ex = new Card { Text = "", Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = new Padding(0) };
             var exl = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             var r1 = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
             r1.Controls.Add(new Label { Text = "Ton:", AutoSize = true, Margin = new Padding(0, Px(5), Px(10), 0), ForeColor = Theme.TextDim, Tag = "keep" });
@@ -651,7 +654,7 @@ namespace ReplayClip
             lblSel = new Label { AutoSize = true, Margin = new Padding(Px(18), Px(11), 0, 0), Tag = "keep", ForeColor = Theme.Text, Font = Theme.Medium(9f) };
             r3.Controls.Add(btnSaveNew);
             r3.Controls.Add(btnOverwrite);
-            var btnDelete = new FxButton { Text = "Löschen", IconName = "delete", Kind = FxKind.Danger, AutoSize = true, Height = Px(38) };
+            btnDelete = new FxButton { Text = "Löschen", IconName = "delete", Kind = FxKind.Danger, AutoSize = true, Height = Px(38) };
             btnDelete.Click += (s, e) =>
             {
                 if (exporting) return;
@@ -662,6 +665,16 @@ namespace ReplayClip
                 if (h != null) h(f);
             };
             r3.Controls.Add(btnDelete);
+            // Zielordner für den neuen Clip
+            btnTarget = new FxButton { IconName = "folder", AutoSize = true, Height = Px(38), Kind = FxKind.Ghost, Margin = new Padding(Px(10), Px(3), 0, 0) };
+            btnTarget.Click += (s, e) => ShowTargetMenu();
+            Tips.Set(btnTarget, "Wohin der neue Clip gespeichert wird");
+            r3.Controls.Add(btnTarget);
+            // Ton- und Bild-Einstellungen nur bei Bedarf aufklappen – mehr Platz für Video und Spuren
+            var btnMore = new FxButton { Text = "Ton & Bild", IconName = "settings", AutoSize = true, Height = Px(38), Kind = FxKind.Ghost, Margin = new Padding(Px(4), Px(3), 0, 0) };
+            btnMore.Click += (s, e) => { r1.Visible = chkPrecise.Visible = !r1.Visible; btnMore.Toggled = r1.Visible; };
+            r3.Controls.Add(btnMore);
+            r1.Visible = chkPrecise.Visible = false;
             r3.Controls.Add(lblSel);
             r3.Controls.Add(progress);
             r3.Controls.Add(lblExport);
@@ -691,10 +704,12 @@ namespace ReplayClip
             file = newFile;
             Text = "Clip bearbeiten – " + Path.GetFileName(file) + "  ·  ReplayClip " + Program.Version;
             LoadClip();
+            UpdateTarget();
         }
 
         void LoadClip()
         {
+            if (btnTarget != null) UpdateTarget();
             Cursor = Cursors.WaitCursor;
             info = ClipInfo.Probe(ffmpeg, file);
             Cursor = Cursors.Default;
@@ -712,7 +727,13 @@ namespace ReplayClip
             st.Names.Clear(); st.Enabled.Clear(); st.Volume.Clear(); st.Segments.Clear();
             st.Waves = null;
             st.Film = null;
-            foreach (var n in info.AudioNames) { st.Names.Add(n); st.Enabled.Add(true); st.Volume.Add(100); }
+            // Eine vorhandene "Mix"-Spur enthält schon alle anderen – zusammen abgespielt wäre alles doppelt laut (übersteuert).
+            // Deshalb ist sie anfangs stumm, wenn es Einzelspuren gibt (mit M wieder einschaltbar).
+            foreach (var n in info.AudioNames)
+            {
+                bool isMix = (n ?? "").IndexOf("mix", StringComparison.OrdinalIgnoreCase) >= 0 && info.AudioNames.Count > 1;
+                st.Names.Add(n); st.Enabled.Add(!isMix); st.Volume.Add(100);
+            }
             if (info.Width > 0 && info.Height > 0) video.Aspect = info.Width / (float)info.Height;
             if (st.Names.Count <= 1) { rbSeparate.Checked = true; rbMix.Enabled = rbMixPlus.Enabled = st.Names.Count > 1; }
             UpdateTimelineHeight();
@@ -1029,17 +1050,23 @@ namespace ReplayClip
                 (st.Segments.Count > 0 ? string.Format(CultureInfo.CurrentCulture, "     ▸ Speichert {0} Abschnitt(e), zusammen {1:0.0} s", st.Segments.Count, st.ExportLength()) : "");
         }
 
+        readonly Settings keyCfg = Settings.Load();
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (exporting) return base.ProcessCmdKey(ref msg, keyData);
+            // anpassbare Tasten (Einstellungen › Tastenkürzel › Editor)
+            if (keyData == keyCfg.EditorKey("close")) { Close(); return true; }
+            if (keyData == keyCfg.EditorKey("delete")) { btnDelete.PerformClick(); return true; }
+            if (keyData == keyCfg.EditorKey("save")) { Export(false); return true; }
+            if (keyData == keyCfg.EditorKey("play")) { TogglePlay(); return true; }
+            if (keyData == keyCfg.EditorKey("in")) { SetIn(); return true; }
+            if (keyData == keyCfg.EditorKey("out")) { SetOut(); return true; }
+            if (keyData == keyCfg.EditorKey("seg")) { AddSegment(); return true; }
+            if (keyData == keyCfg.EditorKey("loop")) { ToggleLoop(); return true; }
             bool shift = (keyData & Keys.Shift) != 0;
             switch (keyData & Keys.KeyCode)
             {
-                case Keys.Space: TogglePlay(); return true;
-                case Keys.I: SetIn(); return true;
-                case Keys.O: SetOut(); return true;
-                case Keys.A: AddSegment(); return true;
-                case Keys.L: ToggleLoop(); return true;
                 case Keys.Left: SeekTo(st.Pos - (shift ? 5 : 1)); return true;
                 case Keys.Right: SeekTo(st.Pos + (shift ? 5 : 1)); return true;
                 case Keys.Oemcomma: SeekTo(st.Pos - 1.0 / Math.Max(1, info != null ? info.Fps : 30)); return true;
@@ -1052,9 +1079,44 @@ namespace ReplayClip
 
         // ======================= Export =======================
 
+        void UpdateTarget()
+        {
+            string dir = targetDir ?? Path.GetDirectoryName(file);
+            btnTarget.Text = (targetDir == null ? "Neben Original: " : "") + Path.GetFileName(dir.TrimEnd('\\'));
+        }
+
+        /// <summary>Menü: neben dem Original, ein Spiel-Ordner aus der Bibliothek oder ein beliebiger Ordner.</summary>
+        void ShowTargetMenu()
+        {
+            var m = new ContextMenuStrip();
+            Theme.Menu(m);
+            m.Items.Add("Neben dem Original (" + Path.GetFileName(Path.GetDirectoryName(file)) + ")", null, (s, e) => { targetDir = null; UpdateTarget(); });
+            string root = keyCfg.SaveDir;
+            try
+            {
+                if (Directory.Exists(root))
+                {
+                    m.Items.Add(new ToolStripSeparator());
+                    foreach (var d in Directory.GetDirectories(root))
+                    {
+                        string dd = d;
+                        m.Items.Add(Path.GetFileName(d), null, (s, e) => { targetDir = dd; UpdateTarget(); });
+                    }
+                }
+            }
+            catch { }
+            m.Items.Add(new ToolStripSeparator());
+            m.Items.Add("Anderer Ordner …", null, (s, e) =>
+            {
+                using (var d = new FolderBrowserDialog { SelectedPath = targetDir ?? Path.GetDirectoryName(file), ShowNewFolderButton = true })
+                    if (d.ShowDialog(this) == DialogResult.OK) { targetDir = d.SelectedPath; UpdateTarget(); }
+            });
+            m.Show(btnTarget, new Point(0, btnTarget.Height));
+        }
+
         string NewFileName()
         {
-            string dir = Path.GetDirectoryName(file);
+            string dir = targetDir ?? Path.GetDirectoryName(file);
             string baseName = Path.GetFileNameWithoutExtension(file);
             baseName = Regex.Replace(baseName, @" \(Schnitt( \d+)?\)$", "");
             string p = Path.Combine(dir, baseName + " (Schnitt).mp4");
@@ -1195,7 +1257,7 @@ namespace ReplayClip
             background = true;
             var hs = ExportStarted;
             if (hs != null) hs(src, target, overwrite);
-            timer.Stop();
+            ReleaseFile();
             Hide();
         }
 
@@ -1211,6 +1273,7 @@ namespace ReplayClip
         {
             var e = new StringBuilder();
             var p = Ffmpeg.Launch(ffmpeg, args, false, e, false, true);
+            exportProc = p;
             string line;
             var rd = p.StandardOutput;
             while ((line = rd.ReadLine()) != null)
@@ -1255,6 +1318,7 @@ namespace ReplayClip
                     background = false;
                     var hf = ExportFailed;
                     if (hf != null) hf(target, error);
+                    LoadClip();
                     timer.Start();
                     Show();
                     Activate();
@@ -1278,11 +1342,18 @@ namespace ReplayClip
                 e.Cancel = true;
                 return;
             }
+            ReleaseFile();
+            base.OnFormClosing(e);
+        }
+
+        /// <summary>Vorschau, Standbilder und Ladevorgänge beenden – danach hält kein FFmpeg die Datei mehr offen.</summary>
+        void ReleaseFile()
+        {
             timer.Stop();
             loadToken++;
             StopPlayback();
             if (grabber != null) grabber.Stop();
-            base.OnFormClosing(e);
+            Ffmpeg.KillUsing(file, exportProc);
         }
     }
 }

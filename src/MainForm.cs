@@ -1210,7 +1210,8 @@ namespace ReplayClip
             if (recycle)
             {
                 if (ed.Visible) ed.SwitchTo(target);
-                if (RecycleFile(original)) { Library.Remove(original); thumbs.Invalidate(original); }
+                Ffmpeg.KillUsing(original);
+                DeleteFromEditor(original);   // mit Wiederholung, falls die Datei noch kurz belegt ist
             }
             Rescan();
         }

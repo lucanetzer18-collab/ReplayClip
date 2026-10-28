@@ -36,7 +36,7 @@ namespace ReplayClip
             if (k == Keys.ShiftKey || k == Keys.ControlKey || k == Keys.Menu || k == Keys.LWin || k == Keys.RWin || k == Keys.None)
                 return true;
             if (k == Keys.Tab && (keyData & Keys.Modifiers) == 0) return base.ProcessCmdKey(ref msg, keyData);
-            if (k == Keys.Back || k == Keys.Delete || k == Keys.Escape)
+            if (!CaptureAll && (k == Keys.Back || k == Keys.Delete || k == Keys.Escape))
             {
                 Mods = 0; Key = 0;
             }
@@ -53,6 +53,31 @@ namespace ReplayClip
             var h = HotkeyChanged;
             if (h != null) h(this, EventArgs.Empty);
             return true;
+        }
+
+        /// <summary>Auch Esc/Entf/Rücktaste als Taste aufnehmen (für Editor-Tasten). Entfernen dann nur per ✕.</summary>
+        public bool CaptureAll;
+
+        public Keys AsKeys
+        {
+            get
+            {
+                if (Key == 0) return Keys.None;
+                var k = (Keys)Key;
+                if ((Mods & Native.MOD_CONTROL) != 0) k |= Keys.Control;
+                if ((Mods & Native.MOD_ALT) != 0) k |= Keys.Alt;
+                if ((Mods & Native.MOD_SHIFT) != 0) k |= Keys.Shift;
+                return k;
+            }
+        }
+
+        public void SetKeys(Keys k)
+        {
+            uint m = 0;
+            if ((k & Keys.Control) != 0) m |= Native.MOD_CONTROL;
+            if ((k & Keys.Alt) != 0) m |= Native.MOD_ALT;
+            if ((k & Keys.Shift) != 0) m |= Native.MOD_SHIFT;
+            SetHotkey(m, (int)(k & Keys.KeyCode));
         }
 
         /// <summary>Tastenkürzel entfernen (wie Esc/Entf im Feld).</summary>
@@ -72,6 +97,16 @@ namespace ReplayClip
             if ((mods & Native.MOD_ALT) != 0) parts.Add("Alt");
             if ((mods & Native.MOD_SHIFT) != 0) parts.Add("Umschalt");
             string name = ((Keys)key).ToString();
+            switch ((Keys)key)
+            {
+                case Keys.Space: name = "Leertaste"; break;
+                case Keys.Escape: name = "Esc"; break;
+                case Keys.Delete: name = "Entf"; break;
+                case Keys.Back: name = "Rücktaste"; break;
+                case Keys.Return: name = "Enter"; break;
+                case Keys.Oemcomma: name = ","; break;
+                case Keys.OemPeriod: name = "."; break;
+            }
             if (name.Length == 2 && name[0] == 'D' && char.IsDigit(name[1])) name = name.Substring(1);
             if (name.StartsWith("NumPad")) name = "Num " + name.Substring(6);
             parts.Add(name);

@@ -432,13 +432,18 @@ namespace ReplayClip
                 { "Strg + F", "Suchen" }, { "F5", "Bibliothek neu einlesen" }
             };
             for (int i = 0; i < rows.GetLength(0); i++) Ui.Row(lib, null, KeyRow(rows[i, 0], rows[i, 1]));
+            // Editor-Tasten: alle anpassbar (Feld anklicken, Taste drücken; ✕ = keine Taste)
             var ed = Ui.Grid();
-            string[,] er =
+            foreach (var act in Settings.EditorActions)
             {
-                { "Leertaste", "Abspielen / Pause" }, { "I  /  O", "Anfang / Ende der Auswahl setzen" }, { "← →", "1 Sekunde (mit Umschalt: 5 s)" },
-                { ",  /  .", "1 Bild zurück / vor" }, { "L", "Auswahl in Schleife" }, { "Mausrad", "Zoom (Umschalt: verschieben)" }
-            };
-            for (int i = 0; i < er.GetLength(0); i++) Ui.Row(ed, null, KeyRow(er[i, 0], er[i, 1]));
+                string id = act[0];
+                var box = new HotkeyBox { CaptureAll = true };
+                box.SetKeys(settings.EditorKey(id));
+                box.HotkeyChanged += (s2, e2) => { settings.EditorKeys[id] = (int)box.AsKeys; settings.Save(); };
+                Ui.Row(ed, act[1], Ui.Flow(Ui.Field(box, Px(200), null, "keyboard"),
+                    Ui.IconButton("delete", "Keine Taste", (s2, e2) => box.ClearHotkey())));
+            }
+            Ui.Row(ed, null, Dim("Fest: ← → = 1 s (Umschalt: 5 s), Komma/Punkt = 1 Bild, Pos1/Ende = Anfang/Ende der Auswahl, Mausrad = Zoom. Änderungen gelten ab dem nächsten Öffnen des Editors.", 600));
 
             Stack(page, Ui.Group("Global (funktionieren auch im Spiel)", keys), Ui.Group("In der Bibliothek", lib), Ui.Group("Im Editor", ed));
             hkSave.Enter += (s, e) => host.UnregisterHotkeys();

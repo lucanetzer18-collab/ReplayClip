@@ -86,6 +86,27 @@ namespace ReplayClip
         public int LibView = 0;
         /// <summary>Weitere Ordner, die die Bibliothek zusätzlich durchsucht (z.B. zweite Platte) – alles erscheint als ein Pool.</summary>
         public List<string> ExtraDirs = new List<string>();
+        /// <summary>Editor-Tasten (Aktion -> Keys inkl. Strg/Alt/Umschalt). Fehlt eine Aktion, gilt der Standard.</summary>
+        public Dictionary<string, int> EditorKeys = new Dictionary<string, int>();
+        public static readonly string[][] EditorActions =
+        {
+            new[] { "play", "Abspielen / Pause" }, new[] { "in", "Anfang setzen" }, new[] { "out", "Ende setzen" },
+            new[] { "seg", "Abschnitt merken" }, new[] { "loop", "Schleife an/aus" }, new[] { "save", "Als neuen Clip speichern" },
+            new[] { "delete", "Clip/Screenshot löschen" }, new[] { "close", "Zurück zur Bibliothek" },
+        };
+        static readonly Dictionary<string, System.Windows.Forms.Keys> EditorDefaults = new Dictionary<string, System.Windows.Forms.Keys>
+        {
+            { "play", System.Windows.Forms.Keys.Space }, { "in", System.Windows.Forms.Keys.I }, { "out", System.Windows.Forms.Keys.O }, { "seg", System.Windows.Forms.Keys.A }, { "loop", System.Windows.Forms.Keys.L },
+            { "save", System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.S }, { "delete", System.Windows.Forms.Keys.Delete }, { "close", System.Windows.Forms.Keys.Escape },
+        };
+        public System.Windows.Forms.Keys EditorKey(string action)
+        {
+            int v;
+            if (EditorKeys.TryGetValue(action, out v)) return (System.Windows.Forms.Keys)v;
+            System.Windows.Forms.Keys k;
+            return EditorDefaults.TryGetValue(action, out k) ? k : System.Windows.Forms.Keys.None;
+        }
+        public string EditorSaveDir = "";      // letzter gewählter Zielordner für Schnitte ("" = neben dem Original)
         public int ClipLimitGB = 0;            // Speicherlimit für Rewind-Clips (0 = aus): älteste werden gelöscht
         public bool ClipLimitProtect = true;   // Favoriten und Clips mit Tags nie automatisch löschen                // Bibliothek zeigt: 0 = Clips, 1 = Aufnahmen, 2 = Screenshots
         public bool OnboardingDone = false;    // Kurzanleitung beim ersten Start gezeigt
@@ -172,6 +193,7 @@ namespace ReplayClip
             foreach (var t in Tracks) s.Tracks.Add(t.Clone());
             s.QuickTags = new List<string>(QuickTags);
             s.ExtraDirs = new List<string>(ExtraDirs);
+            s.EditorKeys = new Dictionary<string, int>(EditorKeys);
             s.TagColors = new Dictionary<string, int>(TagColors, StringComparer.CurrentCultureIgnoreCase);
             return s;
         }
@@ -207,6 +229,9 @@ namespace ReplayClip
             w("Mode", Mode);
             w("LibView", LibView);
             w("ClipLimitGB", ClipLimitGB);
+            var ek = new List<string>();
+            foreach (var kv in EditorKeys) ek.Add(kv.Key + ":" + kv.Value);
+            w("EditorKeys", string.Join(";", ek.ToArray()));
             w("ClipLimitProtect", ClipLimitProtect);
             w("ExtraDirs", string.Join("|", ExtraDirs.ToArray()));
             w("OnboardingDone", OnboardingDone);
@@ -381,6 +406,11 @@ namespace ReplayClip
             s.Mode = Math.Max(0, Math.Min(2, GetInt(d, "Mode", 0)));
             s.LibView = Math.Max(0, Math.Min(2, GetInt(d, "LibView", s.Mode)));
             s.ClipLimitGB = Math.Max(0, Math.Min(100000, GetInt(d, "ClipLimitGB", 0)));
+            foreach (var part in GetStr(d, "EditorKeys", "").Split(';'))
+            {
+                int c = part.IndexOf(':'), v;
+                if (c > 0 && int.TryParse(part.Substring(c + 1), out v)) s.EditorKeys[part.Substring(0, c)] = v;
+            }
             s.ClipLimitProtect = GetBool(d, "ClipLimitProtect", true);
             foreach (var x in GetStr(d, "ExtraDirs", "").Split('|')) if (x.Trim().Length > 0) s.ExtraDirs.Add(x.Trim());
             if (s.Mode == 2) s.Mode = 0;           // 2.0-Screenshot-Modus gibt es nicht mehr (Screenshot ist ein eigener Knopf)

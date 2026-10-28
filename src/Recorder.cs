@@ -34,6 +34,22 @@ namespace ReplayClip
 
         public static string Q(string path) { return "\"" + path + "\""; }
 
+        static readonly List<KeyValuePair<Process, string>> running = new List<KeyValuePair<Process, string>>();
+
+        /// <summary>Alle laufenden FFmpeg-Prozesse beenden, die diese Datei geöffnet haben (Vorschau, Wellenform, Standbild …).
+        /// 'except' (z.B. der laufende Export) bleibt.</summary>
+        public static void KillUsing(string file, Process except = null)
+        {
+            string q = Q(file);
+            lock (running)
+            {
+                running.RemoveAll(kv => { try { return kv.Key.HasExited; } catch { return true; } });
+                foreach (var kv in running)
+                    if (kv.Key != except && kv.Value.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0)
+                        try { kv.Key.Kill(); } catch { }
+            }
+        }
+
         /// <summary>Kurzer Prozesslauf mit gesammelter Fehlerausgabe.</summary>
         public static Process Launch(string exe, string args, bool stdin, StringBuilder errOut, bool highPriority = false, bool stdout = false)
         {
@@ -57,6 +73,11 @@ namespace ReplayClip
             };
             p.Start();
             ChildJob.Add(p); // FFmpeg endet automatisch mit ReplayClip (auch bei "Task beenden")
+            lock (running)
+            {
+                running.RemoveAll(kv => { try { return kv.Key.HasExited; } catch { return true; } });
+                running.Add(new KeyValuePair<Process, string>(p, args));
+            }
             p.BeginErrorReadLine();
             try { p.PriorityClass = highPriority ? ProcessPriorityClass.AboveNormal : ProcessPriorityClass.BelowNormal; } catch { }
             return p;

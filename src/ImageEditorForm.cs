@@ -22,6 +22,7 @@ namespace ReplayClip
         bool updating;
         public event Action<string> Saved;
         public event Action<string> DeleteRequested;
+        FxButton bDelete;
 
         static int Px(float v) { return Theme.S(v); }
 
@@ -94,7 +95,7 @@ namespace ReplayClip
             stack.Controls.Add(bNew);
             stack.Controls.Add(bOver);
             stack.Controls.Add(bCopy);
-            var bDel = new FxButton { Text = "Screenshot löschen", IconName = "delete", Kind = FxKind.Danger, Size = new Size(Px(262), Px(36)), Margin = new Padding(0, Px(14), 0, 0) };
+            var bDel = bDelete = new FxButton { Text = "Screenshot löschen", IconName = "delete", Kind = FxKind.Danger, Size = new Size(Px(262), Px(36)), Margin = new Padding(0, Px(14), 0, 0) };
             bDel.Click += (s, e) =>
             {
                 if (!FxDialog.Ask(this, "Screenshot löschen?", Path.GetFileName(file) + " wird in den Papierkorb verschoben.", "Löschen", "Abbrechen", true)) return;
@@ -112,10 +113,13 @@ namespace ReplayClip
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Theme.DarkTitleBar(this); }
 
+        readonly Settings keyCfg = Settings.Load();
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Escape) Close();
-            else if (e.Control && e.KeyCode == Keys.S) Save(false);
+            if (e.KeyData == keyCfg.EditorKey("close")) Close();
+            else if (e.KeyData == keyCfg.EditorKey("save")) Save(false);
+            else if (e.KeyData == keyCfg.EditorKey("delete")) bDelete.PerformClick();
             base.OnKeyDown(e);
         }
 
