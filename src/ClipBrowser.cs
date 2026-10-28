@@ -202,6 +202,14 @@ namespace ReplayClip
             }
         }
 
+        /// <summary>Hover-Vorschau dieser Datei beenden (vor dem Löschen).</summary>
+        public void ReleaseFile(string path)
+        {
+            if (scrubPath != null && string.Equals(scrubPath, path, StringComparison.OrdinalIgnoreCase)) scrubPath = null;
+            if (strips.ContainsKey(path)) DropStrip(path);
+            DropScaled(path);
+        }
+
         /// <summary>Speicher freigeben (z.B. wenn das Fenster in den Infobereich geht).</summary>
         public void TrimMemory()
         {

@@ -999,29 +999,43 @@ namespace ReplayClip
             if (sel.Count == 0) return;
             string q = sel.Count == 1 ? "„" + sel[0].Name + "“ wird in den Papierkorb verschoben." : sel.Count + " Clips werden in den Papierkorb verschoben.";
             if (!FxDialog.Ask(this, "Clip löschen?", q, "In den Papierkorb", "Abbrechen", true)) return;
-            foreach (var it in sel)
+            var paths = new List<string>();
+            foreach (var it in sel) paths.Add(it.Path);
+            DeleteFiles(paths);
+        }
+
+        /// <summary>Dateien in den Papierkorb: vorher alles beenden, was sie offen hält (Hover-Vorschau, FFmpeg),
+        /// dann mit kurzen Wiederholungen löschen, falls Windows sie noch einen Moment sperrt.</summary>
+        void DeleteFiles(List<string> paths)
+        {
+            foreach (var p in paths) { browser.ReleaseFile(p); Ffmpeg.KillUsing(p); thumbs.Invalidate(p); }
+            ThreadPool.QueueUserWorkItem(_ =>
             {
-                if (RecycleFile(it.Path)) { Library.Remove(it.Path); thumbs.Invalidate(it.Path); }
-            }
-            Rescan();
+                var failed = new List<string>();
+                foreach (var p in paths)
+                {
+                    bool ok = false;
+                    for (int i = 0; i < 15 && !ok; i++)
+                    {
+                        ok = RecycleFile(p) || !File.Exists(p);
+                        if (!ok) { Ffmpeg.KillUsing(p); Thread.Sleep(300); }
+                    }
+                    if (ok) Library.Remove(p); else failed.Add(Path.GetFileName(p));
+                }
+                OnUi(() =>
+                {
+                    Library.SaveSoon();
+                    Rescan();
+                    if (failed.Count > 0) ShowBanner("Konnte nicht löschen (noch in Benutzung?): " + string.Join(", ", failed.ToArray()), null, null);
+                    else Toast.Show(this, "Gelöscht", paths.Count == 1 ? Path.GetFileName(paths[0]) + " liegt im Papierkorb." : paths.Count + " Dateien liegen im Papierkorb.", "delete", Theme.Danger);
+                });
+            });
         }
 
         /// <summary>Aus einem Editor gelöscht: Datei in den Papierkorb (kurz warten, bis der Editor sie freigegeben hat).</summary>
         void DeleteFromEditor(string path)
         {
-            thumbs.Invalidate(path);
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                bool ok = false;
-                for (int i = 0; i < 15 && !ok; i++) { ok = RecycleFile(path) || !File.Exists(path); if (!ok) Thread.Sleep(300); }
-                OnUi(() =>
-                {
-                    if (!ok) { ShowBanner("Konnte " + Path.GetFileName(path) + " nicht löschen (noch in Benutzung?).", null, null); return; }
-                    Library.Remove(path);
-                    Rescan();
-                    Toast.Show(this, "Gelöscht", Path.GetFileName(path) + " liegt im Papierkorb.", "delete", Theme.Danger);
-                });
-            });
+            DeleteFiles(new List<string> { path });
         }
 
         static bool RecycleFile(string path)

@@ -3,6 +3,9 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.3.1
+- Löschen in der Bibliothek klappt jetzt auch direkt nach dem Ansehen/Überfahren: Hover-Vorschau und alle FFmpeg-Prozesse, die die Datei offen halten, werden vorher beendet; falls Windows die Datei noch kurz sperrt, wird automatisch erneut versucht.
+
 ## 2.3.0
 - **Zielordner beim Schneiden wählbar**: neben dem Original, ein Spiel-Ordner aus der Bibliothek oder ein beliebiger Ordner.
 - **Editor-Tasten frei belegbar** (Einstellungen › Tastenkürzel › Im Editor). Neu: **Esc** = zurück zur Bibliothek, **Entf** = Clip/Screenshot löschen, **Strg+S** = speichern.
