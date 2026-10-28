@@ -5,7 +5,7 @@ automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
 ## 1.5.0
 - Updates direkt in der App: ReplayClip prüft GitHub auf neue Versionen, zeigt die Neuerungen und aktualisiert sich auf Wunsch selbst (Einstellungen › Allgemein › Updates).
-- Projekt auf GitHub: automatischer Build und Release bei jedem Versions-Tag.
+- Projekt auf GitHub: automatischer Build und Release, sobald eine neue Versionsnummer hochgeladen wird.
 
 ## 1.4.9
 - Kopfleiste (Pufferbalken, Timer, Pegel) läuft beim Hovern in der Bibliothek flüssig weiter.
