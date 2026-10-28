@@ -3,6 +3,12 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.4.0
+- **Spiele & Apps = echte Ordner**: mit „+“ neuen Ordner anlegen (im Speicherort oder – falls eingerichtet – in einem weiteren Bibliotheks-Ordner). Leere Ordner erscheinen auch in der Liste.
+- **Clips verschieben wie im Explorer**: Clips aus der Ansicht links auf einen Spiel-Ordner ziehen – Datei wird verschoben, Tags und Favoriten bleiben erhalten.
+- Ordnerfarbe: Klick auf den Farbpunkt (wie bei Tags).
+- **Technische Infos** rechts im Detailbereich: Auflösung, Bildrate, Codec, Bitrate und Tonspuren (bei Screenshots Bildgröße und Format).
+
 ## 2.3.1
 - Löschen in der Bibliothek klappt jetzt auch direkt nach dem Ansehen/Überfahren: Hover-Vorschau und alle FFmpeg-Prozesse, die die Datei offen halten, werden vorher beendet; falls Windows die Datei noch kurz sperrt, wird automatisch erneut versucht.
 

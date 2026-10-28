@@ -1085,7 +1085,7 @@ namespace ReplayClip
                 var paths = new List<string>();
                 foreach (var x in Selected) paths.Add(x.Path);
                 var data = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                DoDragDrop(data, DragDropEffects.Copy);
+                DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Move);
             }
         }
 

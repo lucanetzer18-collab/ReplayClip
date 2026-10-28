@@ -1515,6 +1515,35 @@ namespace ReplayClip
         public event Action<int, Point> ItemRightClicked;
         /// <summary>Klick auf den Farbpunkt eines Eintrags (Farbe ändern).</summary>
         public event Action<int, Point> DotClicked;
+        /// <summary>Dateien wurden auf einen Eintrag gezogen (z.B. Clips auf einen Spiel-Ordner).</summary>
+        public event Action<int, string[]> FilesDropped;
+        /// <summary>Darf auf diesen Eintrag gezogen werden?</summary>
+        public Func<NavEntry, bool> CanDrop;
+        int dropHot = -1;
+
+        protected override void OnDragOver(DragEventArgs e)
+        {
+            base.OnDragOver(e);
+            var p = PointToClient(new Point(e.X, e.Y));
+            int n = At(p);
+            bool ok = n >= 0 && CanDrop != null && CanDrop(Items[n]) && e.Data.GetDataPresent(DataFormats.FileDrop);
+            e.Effect = ok ? DragDropEffects.Move : DragDropEffects.None;
+            int dh = ok ? n : -1;
+            if (dh != dropHot) { dropHot = dh; hot = dh; Invalidate(); }
+        }
+
+        protected override void OnDragLeave(EventArgs e) { base.OnDragLeave(e); dropHot = -1; Invalidate(); }
+
+        protected override void OnDragDrop(DragEventArgs e)
+        {
+            base.OnDragDrop(e);
+            int n = dropHot;
+            dropHot = -1;
+            Invalidate();
+            var files = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (n >= 0 && files != null && FilesDropped != null) FilesDropped(n, files);
+        }
+
         /// <summary>Klick auf den Knopf einer Überschrift.</summary>
         public event Action<NavEntry, Point> HeaderButtonClicked;
 

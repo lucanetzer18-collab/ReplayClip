@@ -281,8 +281,12 @@ namespace ReplayClip
                 if (en.Kind == 5) ShowTagColorMenu(en.Value, nav, p);
                 else if (en.Kind == 4) ShowTagColorMenu("game:" + en.Value, nav, p);
             };
+            nav.AllowDrop = true;
+            nav.CanDrop = en => en.Kind == 4;
+            nav.FilesDropped += (i, files) => MoveToGame(nav.Items[i].Value, files);
             nav.HeaderButtonClicked += (en, p) =>
             {
+                if (en.Text == "Spiele & Apps") { AddGameFolder(); return; }
                 string t = InputBox.Show(this, "Neuer Tag", "Name des Tags (wird als Schnell-Tag angelegt" + (browser.Selected.Count > 0 ? " und den ausgewählten Clips gegeben" : "") + "):", "");
                 if (string.IsNullOrEmpty(t) || t.Trim().Length == 0) return;
                 t = t.Trim();
@@ -463,9 +467,24 @@ namespace ReplayClip
                 items.Add(new NavEntry { Kind = 6, Text = views[v], Value = v.ToString(), Icon = vicons[v], Count = v == settings.LibView ? all.Count : -1 });
             items.Add(new NavEntry { Kind = 2, Text = "Favoriten", Icon = "starfill", Count = favs });
             items.Add(new NavEntry { Kind = 3, Text = "Schnitte", Icon = "cut", Count = cuts });
-            if (games.Count > 0)
+            // Spiel-Ordner auch ohne Clips zeigen (Unterordner von Speicherort und weiteren Ordnern)
+            gameDirs.Clear();
+            foreach (var root in LibraryRoots())
             {
-                items.Add(new NavEntry { Header = true, Text = "Spiele & Apps" });
+                try
+                {
+                    foreach (var d in Directory.GetDirectories(root))
+                    {
+                        string n = Path.GetFileName(d);
+                        if (System.Text.RegularExpressions.Regex.IsMatch(n, @"^\d{4}-\d{2}(-\d{2})?$")) continue;   // Monats-/Datumsordner
+                        if (!gameDirs.ContainsKey(n)) gameDirs[n] = d;
+                        if (!games.ContainsKey(n)) games[n] = 0;
+                    }
+                }
+                catch { }
+            }
+            {
+                items.Add(new NavEntry { Header = true, Text = "Spiele & Apps", HeaderButton = "+" });
                 foreach (var kv in games) items.Add(new NavEntry { Kind = 4, Text = kv.Key, Value = kv.Key, Count = kv.Value, Dot = Theme.GameColor(kv.Key) });
             }
             items.Add(new NavEntry { Header = true, Text = "Tags", HeaderButton = "+" });
@@ -773,6 +792,7 @@ namespace ReplayClip
                 string d = ClipBrowser.Dur(first.Meta.Duration);
                 sb.Append(d.Length > 0 ? d + "  ·  " : "").Append(ClipBrowser.FmtSize(first.Size));
                 detInfo.Text = sb.ToString();
+                ShowTechInfo(first, sb.ToString());
                 if (first.IsCut)
                 {
                     bool exists = File.Exists(first.Meta.CutFrom);
@@ -991,6 +1011,46 @@ namespace ReplayClip
                 Toast.Show(this, "Kopiert", sel.Count + " Clip(s) in der Zwischenablage – z.B. in Discord mit Strg+V einfügen.", "copy", Theme.Secondary);
             }
             catch { }
+        }
+
+        readonly Dictionary<string, string> techCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Auflösung, Bildrate, Codec, Tonspuren (bzw. Bildgröße bei Screenshots) im Detailbereich – im Hintergrund ermittelt.</summary>
+        void ShowTechInfo(ClipItem it, string baseText)
+        {
+            string path = it.Path, cached;
+            if (techCache.TryGetValue(path, out cached)) { detInfo.Text = baseText + "\n" + cached; return; }
+            string ff = Ffmpeg.Find(settings);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string t = "";
+                try
+                {
+                    if (Library.IsImage(path))
+                    {
+                        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                        using (var img = Image.FromStream(fs, false, false))
+                            t = img.Width + " × " + img.Height + "  ·  " + Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+                    }
+                    else if (ff != null)
+                    {
+                        var ci = ClipInfo.Probe(ff, path);
+                        string codec = ci.VideoCodec.StartsWith("hevc") || ci.VideoCodec.StartsWith("h265") ? "HEVC" : ci.VideoCodec.StartsWith("h264") ? "H.264" : ci.VideoCodec.ToUpperInvariant();
+                        double mbit = ci.Duration > 0 ? it.Size * 8 / ci.Duration / 1e6 : 0;
+                        t = ci.Width + " × " + ci.Height + "  ·  " + Math.Round(ci.Fps) + " FPS  ·  " + codec +
+                            (mbit > 0 ? "  ·  " + mbit.ToString("0.#", CultureInfo.CurrentCulture) + " Mbit/s" : "") +
+                            "\n" + ci.AudioNames.Count + " Tonspur(en)" + (ci.AudioNames.Count > 0 ? ": " + string.Join(", ", ci.AudioNames.ToArray()) : "");
+                    }
+                }
+                catch { }
+                if (t.Length == 0) return;
+                OnUi(() =>
+                {
+                    techCache[path] = t;
+                    var cur = browser.Selected;
+                    if (cur.Count == 1 && string.Equals(cur[0].Path, path, StringComparison.OrdinalIgnoreCase)) detInfo.Text = baseText + "\n" + t;
+                });
+            });
         }
 
         void DeleteSelected()
@@ -1438,6 +1498,74 @@ namespace ReplayClip
         string LibraryRoot()
         {
             return settings.LibView == 1 ? settings.RecordDir : settings.LibView == 2 ? settings.ShotDir : settings.SaveDir;
+        }
+
+        readonly Dictionary<string, string> gameDirs = new Dictionary<string, string>(StringComparer.CurrentCultureIgnoreCase);
+
+        List<string> LibraryRoots()
+        {
+            var roots = new List<string> { LibraryRoot() };
+            foreach (var d in settings.ExtraDirs)
+                if (!roots.Exists(r => string.Equals(r.TrimEnd('\\'), d.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))) roots.Add(d);
+            return roots;
+        }
+
+        string GameDir(string game)
+        {
+            string d;
+            return gameDirs.TryGetValue(game, out d) ? d : Path.Combine(LibraryRoot(), Native.SafeFileName(game));
+        }
+
+        /// <summary>Neuen Spiel-/App-Ordner anlegen – im Speicherort oder (falls vorhanden) in einem weiteren Ordner.</summary>
+        void AddGameFolder()
+        {
+            string name = InputBox.Show(this, "Neuer Ordner", "Name des Spiels / der App:", "");
+            if (string.IsNullOrEmpty(name) || name.Trim().Length == 0) return;
+            name = Native.SafeFileName(name.Trim());
+            var roots = LibraryRoots();
+            string root = roots[0];
+            if (roots.Count > 1)
+            {
+                var opts = new List<string>();
+                foreach (var r in roots) opts.Add(r.Length > 38 ? "…" + r.Substring(r.Length - 36) : r);
+                opts.Add("Abbrechen");
+                int c = FxDialog.Show(this, "Wo anlegen?", "In welchem Bibliotheks-Ordner soll „" + name + "“ angelegt werden?", "folder", opts.ToArray(), 0, opts.Count - 1, false);
+                if (c < 0 || c >= roots.Count) return;
+                root = roots[c];
+            }
+            try { Directory.CreateDirectory(Path.Combine(root, name)); }
+            catch (Exception ex) { ShowBanner("Ordner konnte nicht angelegt werden: " + ex.Message, null, null); return; }
+            RebuildNav();
+        }
+
+        /// <summary>Clips per Drag &amp; Drop in einen anderen Spiel-Ordner verschieben (Tags/Favoriten wandern mit).</summary>
+        void MoveToGame(string game, string[] files)
+        {
+            string dir = GameDir(game);
+            int moved = 0;
+            var failed = new List<string>();
+            try { Directory.CreateDirectory(dir); } catch { }
+            foreach (var f in files)
+            {
+                if (!File.Exists(f) || string.Equals(Path.GetDirectoryName(f), dir, StringComparison.OrdinalIgnoreCase)) continue;
+                string target = Path.Combine(dir, Path.GetFileName(f));
+                for (int n = 2; File.Exists(target); n++) target = Path.Combine(dir, Path.GetFileNameWithoutExtension(f) + " " + n + Path.GetExtension(f));
+                browser.ReleaseFile(f);
+                Ffmpeg.KillUsing(f);
+                try
+                {
+                    File.Move(f, target);
+                    Library.Rename(f, target);
+                    Library.Get(target).App = game;
+                    thumbs.Invalidate(f);
+                    moved++;
+                }
+                catch { failed.Add(Path.GetFileName(f)); }
+            }
+            Library.SaveSoon();
+            Rescan();
+            if (failed.Count > 0) ShowBanner("Nicht verschoben (in Benutzung?): " + string.Join(", ", failed.ToArray()), null, null);
+            else if (moved > 0) Toast.Show(this, "Verschoben", moved + " Datei(en) nach „" + game + "“.", "folder", Theme.Accent);
         }
 
         void SetMode(int m)
