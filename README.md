@@ -35,14 +35,10 @@ Der Quellcode liegt in `src/` (C# 5, WinForms, .NET Framework 4.8).
 
 1. Version in `src/Program.cs` erhöhen (`AssemblyVersion` und `AssemblyFileVersion`, z.B. `1.5.1.0`).
 2. Oben in `CHANGELOG.md` einen Abschnitt `## 1.5.1` mit den Neuerungen einfügen.
-3. Committen, Tag setzen und hochladen:
-   ```
-   git commit -am "Version 1.5.1"
-   git tag v1.5.1
-   git push --follow-tags
-   ```
-4. GitHub Actions baut die EXE, packt `ReplayClip-1.5.1.zip` und veröffentlicht das Release.
-   Alle installierten ReplayClips bieten das Update danach automatisch an.
+3. Committen und auf `main` hochladen.
+4. GitHub Actions merkt die neue Versionsnummer, baut die EXE, packt `ReplayClip-1.5.1.zip` und veröffentlicht
+   das Release (inkl. Tag `v1.5.1`). Alle installierten ReplayClips bieten das Update danach automatisch an.
+   Commits ohne neue Versionsnummer erzeugen kein Release.
 
 ## Drittanbieter
 
