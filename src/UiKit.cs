@@ -447,7 +447,7 @@ namespace ReplayClip
             var ts = Gfx.Measure(Text, Font);
             if (!string.IsNullOrEmpty(icon)) w += Gfx.Measure(Theme.Icon(icon), Theme.IconFont(IconSize)).Width + (string.IsNullOrEmpty(Text) ? 0 : Theme.S(7));
             w += ts.Width;
-            if (!string.IsNullOrEmpty(hint)) w += Theme.S(10) + Gfx.Measure(hint, Theme.F(8f)).Width;
+            if (!string.IsNullOrEmpty(hint)) w += Theme.S(12) + Gfx.Measure(hint, Theme.F(8f)).Width + Theme.S(16);
             int h = Math.Max(Theme.S(32), ts.Height + Theme.S(14));
             if (string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(icon)) w = Math.Max(w, h);
             return new Size(w, h);
@@ -554,7 +554,7 @@ namespace ReplayClip
             var hf = Theme.F(8f);
             var hs = string.IsNullOrEmpty(hint) ? Size.Empty : Gfx.Measure(hint, hf);
             int gap = (ic != null && !string.IsNullOrEmpty(Text)) ? Theme.S(7) : 0;
-            int total = isz.Width + gap + ts.Width + (hs.Width > 0 ? Theme.S(10) + hs.Width : 0);
+            int total = isz.Width + gap + ts.Width + (hs.Width > 0 ? Theme.S(12) + hs.Width + Theme.S(16) : 0);
             int x = LeftAlign ? Padding.Left : (Width - total) / 2;
             int cy = Height / 2;
             if (ic != null)
@@ -570,11 +570,13 @@ namespace ReplayClip
             }
             if (hs.Width > 0)
             {
-                x += Theme.S(10);
-                var hr = new RectangleF(x - Theme.S(4), cy - hs.Height / 2 - Theme.S(2), hs.Width + Theme.S(8), hs.Height + Theme.S(4));
-                Gfx.FillRound(g, Gfx.Alpha(Color.Black, kind == FxKind.Primary ? 40 : 60), hr, Theme.S(4));
-                TextRenderer.DrawText(g, hint, hf, new Rectangle(x, cy - hs.Height / 2, hs.Width + 2, hs.Height),
-                    kind == FxKind.Primary ? Gfx.Alpha(Theme.OnAccent, 210) : Theme.TextDim, Gfx.Left);
+                // Tastenkürzel als kleine Pille (gleiche Form wie die Knöpfe)
+                x += Theme.S(12);
+                float hh = hs.Height + Theme.S(6);
+                var hr = new RectangleF(x, cy - hh / 2f, hs.Width + Theme.S(16), hh);
+                Gfx.FillRound(g, Gfx.Alpha(Color.Black, kind == FxKind.Primary ? 45 : 70), hr, hh / 2f);
+                TextRenderer.DrawText(g, hint, hf, Rectangle.Round(hr),
+                    kind == FxKind.Primary ? Gfx.Alpha(Theme.OnAccent, 220) : Theme.TextDim, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
             }
         }
     }

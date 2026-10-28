@@ -220,7 +220,7 @@ namespace ReplayClip
             AddPage("Bibliothek", "library", "Speicherort, Ordnerstruktur, Vorschau, Discord und Schnitte", BuildLibraryPage());
             AddPage("Tags", "tag", "Schnell-Tags auf den Tasten 1–9", BuildQuickTagPage());
             AddPage("Aussehen", "color", "Farben, Schrift und Animationen", BuildLookPage());
-            AddPage("Sound & Hinweise", "bell", "Was passiert, wenn ein Clip gespeichert wurde", BuildSoundPage());
+            AddPage("Sound & Hinweise", "bell", "Sounds für Clips, Screenshots und Aufnahmen – plus Einblendungen", BuildSoundPage());
             AddPage("Speicher & FFmpeg", "storage", "Puffer-Ordner und Encoder", BuildSystemPage());
             AddPage("Allgemein", "general", "Start-Verhalten", BuildGeneralPage());
             AddPage("Updates", "refresh", "Neue Versionen suchen und installieren", BuildUpdatesPage());
@@ -547,9 +547,7 @@ namespace ReplayClip
             var copy = new FxToggle { Text = "Screenshot auch in die Zwischenablage legen", Checked = settings.ShotCopy };
             copy.CheckedChanged += (s, e) => { settings.ShotCopy = copy.Checked; settings.Save(); };
             Ui.Row(g, "", copy);
-            var snd = new FxToggle { Text = "Auslöser-Sound", Checked = settings.ShotSound };
-            snd.CheckedChanged += (s, e) => { settings.ShotSound = snd.Checked; settings.Save(); };
-            Ui.Row(g, "", snd);
+            Ui.Row(g, null, Dim("Den Auslöser-Sound wählst du unter „Sound & Hinweise“.", 600));
             Ui.Row(g, null, Dim("Tastenkürzel unter „Tastenkürzel“ (Standard Alt+F12) – funktioniert in jedem Modus. Aufgenommen wird der Monitor aus „Aufnahme“. Doppelklick auf einen Screenshot öffnet den Bild-Editor (zuschneiden, Größe, Format).", 600));
             Stack(page, Ui.Group("Screenshots", g));
             return page;
@@ -751,11 +749,14 @@ namespace ReplayClip
             txtSoundFile = new TextBox { ReadOnly = true };
             soundFileRow = Ui.Flow(Ui.Field(txtSoundFile, Px(330), "Keine Datei gewählt", "bell"), Ui.Button("Datei wählen …", (s, e) => PickSoundFile()));
             Ui.Row(snd, "Eigene Datei", soundFileRow);
+            chkHotkeySound = new FxToggle();   // ersetzt durch eigene Sound-Zeile "Hotkey gedrückt"
+            SoundRow(snd, "Hotkey gedrückt", () => settings.PressSound, v => settings.PressSound = v, () => settings.PressSoundFile, v => settings.PressSoundFile = v);
+            SoundRow(snd, "Screenshot", () => settings.ShotSoundId, v => settings.ShotSoundId = v, () => settings.ShotSoundFile, v => settings.ShotSoundFile = v);
+            SoundRow(snd, "Aufnahme startet", () => settings.RecStartSound, v => settings.RecStartSound = v, () => settings.RecStartSoundFile, v => settings.RecStartSoundFile = v);
+            SoundRow(snd, "Aufnahme gespeichert", () => settings.RecStopSound, v => settings.RecStopSound = v, () => settings.RecStopSoundFile, v => settings.RecStopSoundFile = v);
             trkSoundVol = new FxSlider { Minimum = 0, Maximum = 100, Width = Px(240), DefaultValue = 70, SmallChange = 5 };
             lblSoundVol = new Label { AutoSize = true, Margin = new Padding(Px(8), Px(6), 0, 0), Tag = "keep", ForeColor = Theme.Text };
             Ui.Row(snd, "Lautstärke", Ui.Flow(trkSoundVol, lblSoundVol));
-            chkHotkeySound = new FxToggle { Text = "Tiefer Ton beim Drücken des Hotkeys (Speicher-Sound folgt höher)" };
-            Ui.Row(snd, "", chkHotkeySound);
             chkErrorSound = new FxToggle { Text = "Warnton, wenn das Speichern fehlschlägt" };
             Ui.Row(snd, "", chkErrorSound);
             Ui.Row(snd, null, Dim("Eigene Datei: WAV, MP3, OGG … (die ersten 6 Sekunden werden verwendet).", 560));
@@ -813,6 +814,35 @@ namespace ReplayClip
             var pos = t.GetPositionFromControl(rowContent);
             var lbl = t.GetControlFromPosition(0, pos.Row);
             if (lbl != null && lbl != rowContent) lbl.Visible = visible;
+        }
+
+        /// <summary>Sound-Auswahl für ein Ereignis: Liste + Anhören + eigene Datei.</summary>
+        void SoundRow(TableLayoutPanel g, string label, Func<string> getId, Action<string> setId, Func<string> getFile, Action<string> setFile)
+        {
+            var cmb = Ui.Combo(Px(260));
+            foreach (var c in SoundFx.Choices) cmb.Items.Add(c.Value);
+            int si = 0;
+            for (int i = 0; i < SoundFx.Choices.Length; i++) if (SoundFx.Choices[i].Key == getId()) si = i;
+            cmb.SelectedIndex = si;
+            Action pick = () =>
+            {
+                using (var d = new OpenFileDialog { Filter = "Audio (*.wav;*.mp3;*.ogg;*.flac;*.m4a)|*.wav;*.mp3;*.ogg;*.flac;*.m4a|Alle Dateien|*.*", Title = "Sound für „" + label + "“" })
+                    if (d.ShowDialog(this) == DialogResult.OK) { setFile(d.FileName); settings.Save(); SoundFx.Play("file", d.FileName, settings.SoundVolume, settings); }
+            };
+            var file = Ui.Button("bell", "Datei …", (s, e) => pick());
+            file.Visible = getId() == "file";
+            var play = Ui.Button("play", "Anhören", (s, e) => SoundFx.Play(getId(), getFile(), settings.SoundVolume, settings));
+            Ui.Row(g, label, Ui.Flow(cmb, play, file));
+            cmb.SelectedIndexChanged += (s, e) =>
+            {
+                if (cmb.SelectedIndex < 0) return;
+                string id = SoundFx.Choices[cmb.SelectedIndex].Key;
+                file.Visible = id == "file";
+                setId(id);
+                settings.Save();
+                if (id == "file" && string.IsNullOrEmpty(getFile())) pick();
+                else SoundFx.Play(id, getFile(), settings.SoundVolume, settings);
+            };
         }
 
         void PickSoundFile()

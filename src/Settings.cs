@@ -106,6 +106,11 @@ namespace ReplayClip
         public int SoundVolume = 70;
         public bool ErrorSound = true;
         public bool HotkeySound = true;
+        // Sounds je Ereignis (Id aus SoundFx.Choices, "file" = eigene Datei, "off" = aus)
+        public string PressSound = "press", PressSoundFile = "";
+        public string ShotSoundId = "camera", ShotSoundFile = "";
+        public string RecStartSound = "blip", RecStartSoundFile = "";
+        public string RecStopSound = "success", RecStopSoundFile = "";
         // Updates (GitHub Releases)
         public bool UpdateCheck = true;
         public string UpdateRepo = Updater.DefaultRepo;
@@ -222,6 +227,10 @@ namespace ReplayClip
             w("SoundVolume", SoundVolume);
             w("ErrorSound", ErrorSound);
             w("HotkeySound", HotkeySound);
+            w("PressSound", PressSound); w("PressSoundFile", PressSoundFile);
+            w("ShotSoundId", ShotSoundId); w("ShotSoundFile", ShotSoundFile);
+            w("RecStartSound", RecStartSound); w("RecStartSoundFile", RecStartSoundFile);
+            w("RecStopSound", RecStopSound); w("RecStopSoundFile", RecStopSoundFile);
             w("UpdateCheck", UpdateCheck);
             w("UpdateRepo", UpdateRepo);
             w("SkipUpdate", SkipUpdate);
@@ -312,6 +321,10 @@ namespace ReplayClip
             s.SoundVolume = Math.Max(0, Math.Min(100, GetInt(d, "SoundVolume", 70)));
             s.ErrorSound = GetBool(d, "ErrorSound", true);
             s.HotkeySound = GetBool(d, "HotkeySound", true);
+            s.PressSound = GetStr(d, "PressSound", s.HotkeySound ? "press" : "off"); s.PressSoundFile = GetStr(d, "PressSoundFile", "");
+            s.ShotSoundId = GetStr(d, "ShotSoundId", GetBool(d, "ShotSound", true) ? "camera" : "off"); s.ShotSoundFile = GetStr(d, "ShotSoundFile", "");
+            s.RecStartSound = GetStr(d, "RecStartSound", "blip"); s.RecStartSoundFile = GetStr(d, "RecStartSoundFile", "");
+            s.RecStopSound = GetStr(d, "RecStopSound", "success"); s.RecStopSoundFile = GetStr(d, "RecStopSoundFile", "");
             s.UpdateCheck = GetBool(d, "UpdateCheck", true);
             s.UpdateRepo = GetStr(d, "UpdateRepo", Updater.DefaultRepo).Trim();
             // Platzhalter aus alten Versionen durch das fest eingebaute Repo ersetzen

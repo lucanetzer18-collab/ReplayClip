@@ -3,6 +3,11 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.2.0
+- **Sounds für jedes Ereignis**: Clip gespeichert, Hotkey gedrückt, Screenshot, Aufnahme startet, Aufnahme gespeichert – jeweils aus der Liste oder eigene Datei (Einstellungen › Sound & Hinweise).
+- **9 neue Sounds**: Erfolg, Glitzer, Level-Up, Blip, Wassertropfen, Whoosh, Laser, Kamera (mechanisch), Tiefer Ton.
+- Kopfleiste: Kürzel-Anzeige in den Knöpfen jetzt als Pille, gleichmäßige Abstände, alle Knöpfe gleich hoch; Layout springt nicht mehr, wenn sich der Knopftext ändert.
+
 ## 2.1.1
 - Kopfleiste: Versions-Chip sauber auf Höhe des Titels (Pille mit Farbverlauf-Rand).
 - Knöpfe „Clip speichern“, „Screenshot“ und Einstellungen jetzt rund wie der Rewind/Aufnahme-Umschalter.
