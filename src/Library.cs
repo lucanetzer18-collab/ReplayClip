@@ -163,13 +163,38 @@ namespace ReplayClip
         }
 
         /// <summary>Alle Clips unter dem Speicherordner einlesen.</summary>
-        public static List<ClipItem> Scan(string root)
+        /// <summary>Ordner-Optionen für Aufnahmen und Screenshots.</summary>
+        public static readonly string[] StructureNames = { "Ungeordnet (alles in einen Ordner)", "Spiel/App", "Spiel/App \\ Monat", "Monat \\ Spiel/App", "Datum (ein Ordner pro Tag)" };
+
+        public static string FolderIn(string root, int structure, string safeApp, DateTime when)
+        {
+            string month = when.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            switch (structure)
+            {
+                case 1: return System.IO.Path.Combine(root, safeApp);
+                case 2: return System.IO.Path.Combine(System.IO.Path.Combine(root, safeApp), month);
+                case 3: return System.IO.Path.Combine(System.IO.Path.Combine(root, month), safeApp);
+                case 4: return System.IO.Path.Combine(root, when.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                default: return root;
+            }
+        }
+
+        public static bool IsImage(string path)
+        {
+            string e = (System.IO.Path.GetExtension(path) ?? "").ToLowerInvariant();
+            return e == ".png" || e == ".jpg" || e == ".jpeg";
+        }
+
+        public static List<ClipItem> Scan(string root) { return Scan(root, new[] { "*.mp4" }); }
+
+        public static List<ClipItem> Scan(string root, string[] patterns)
         {
             var list = new List<ClipItem>();
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return list;
-            string[] files;
-            try { files = Directory.GetFiles(root, "*.mp4", SearchOption.AllDirectories); }
+            var all = new List<string>();
+            try { foreach (var pat in patterns) all.AddRange(Directory.GetFiles(root, pat, SearchOption.AllDirectories)); }
             catch { return list; }
+            var files = all.ToArray();
             foreach (var f in files)
             {
                 string name = System.IO.Path.GetFileName(f);

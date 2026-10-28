@@ -5,7 +5,10 @@ Schlanker Replay-Buffer für Windows 11 – wie NVIDIA Instant Replay, aber mit 
 
 ## Funktionen
 
-- Nimmt dauerhaft einen Monitor auf und behält die letzten 1–20 Minuten (Hotkey speichert, Standard **Alt+F10**)
+- **Drei Modi** (oben umschaltbar):
+  - **Rewind** – behält immer die letzten 1–20 Minuten, **Alt+F10** speichert den Clip
+  - **Aufnahme** – dauerhaft aufnehmen (z.B. Turniere), **Alt+F9** Start/Stopp, eigener Speicherort
+  - **Screenshot** – **Alt+F12**, eigener Speicherort und Ordnerstruktur, Bild-Editor (zuschneiden, Größe, Format)
 - Bild über Desktop Duplication + Grafikkarten-Encoder: **NVIDIA** (NVENC), **AMD** (AMF), **Intel/Onboard** (Quick Sync) – oder ohne Grafikkarte über den Prozessor
 - Bis zu 6 **getrennte Tonspuren**, z.B. Discord / restlicher PC-Sound / Mikrofon, Lautstärke je Spur bis 500 %
 - **Bibliothek**: Ordner je Spiel, Kachel- und Listenansicht, Tags mit eigenen Farben, Schnell-Tags 1–9, Favoriten, Drag & Drop nach Discord

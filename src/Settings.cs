@@ -63,8 +63,8 @@ namespace ReplayClip
 
         public uint SaveHotkeyMods = Native.MOD_ALT;
         public int SaveHotkeyKey = 0x79;       // F10
-        public uint ToggleHotkeyMods = Native.MOD_ALT | Native.MOD_SHIFT;
-        public int ToggleHotkeyKey = 0x79;     // F10
+        public uint ToggleHotkeyMods = Native.MOD_ALT;   // 2.0: Aufnahme starten/stoppen
+        public int ToggleHotkeyKey = 0x78;     // F9
 
         public string SaveDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ReplayClip");
         public string BufferDir = Path.Combine(AppDataDir, "Puffer");
@@ -77,8 +77,24 @@ namespace ReplayClip
         public bool ResetBufferAfterSave = true;
 
         // Aussehen
-        public int AccentArgb = unchecked((int)0xFF2ECC71);
-        public int SecondaryArgb = unchecked((int)0xFF4DA3FF);
+        public int AccentArgb = unchecked((int)0xFF966EFF);     // 2.0: Violett
+        public int SecondaryArgb = unchecked((int)0xFFFF4D8D);  // 2.0: Pink
+        public int SettingsVersion = 2;
+
+        // ---- Modi (2.0) ----
+        public int Mode = 0;                   // 0 = Rewind (Replay-Puffer), 1 = Aufnahme (dauerhaft), 2 = Screenshot
+        public bool RewindPaused = false;      // Rewind-Puffer pausiert (Einstellungen)
+        public string RecordDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ReplayClip Aufnahmen");
+        public int RecordStructure = 1;        // siehe Library.StructureNames
+        public int RecordMinFreeGB = 5;        // Aufnahme stoppt automatisch, wenn weniger frei ist
+        public string ShotDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "ReplayClip");
+        public int ShotStructure = 1;
+        public string ShotFormat = "png";      // png | jpg
+        public int ShotQuality = 92;
+        public bool ShotCopy = true;           // Screenshot auch in die Zwischenablage
+        public bool ShotSound = true;
+        public uint ShotHotkeyMods = Native.MOD_ALT;
+        public int ShotHotkeyKey = 0x7B;       // F12
         public int FontChoice = 0;             // 0 Inter, 1 Segoe UI Variable, 2 Bahnschrift, 3 Segoe UI
         public int Animations = 0;             // 0 voll, 1 reduziert, 2 aus
 
@@ -175,6 +191,20 @@ namespace ReplayClip
             w("BufferDir", BufferDir);
             w("FfmpegPath", FfmpegPath);
             w("StartBufferOnLaunch", StartBufferOnLaunch);
+            w("SettingsVersion", SettingsVersion);
+            w("Mode", Mode);
+            w("RewindPaused", RewindPaused);
+            w("RecordDir", RecordDir);
+            w("RecordStructure", RecordStructure);
+            w("RecordMinFreeGB", RecordMinFreeGB);
+            w("ShotDir", ShotDir);
+            w("ShotStructure", ShotStructure);
+            w("ShotFormat", ShotFormat);
+            w("ShotQuality", ShotQuality);
+            w("ShotCopy", ShotCopy);
+            w("ShotSound", ShotSound);
+            w("ShotHotkeyMods", ShotHotkeyMods);
+            w("ShotHotkeyKey", ShotHotkeyKey);
             w("StartMinimized", StartMinimized);
             w("NotifySound", NotifySound);
             w("NotifyBalloon", NotifyBalloon);
@@ -322,6 +352,33 @@ namespace ReplayClip
                 t.Volume = Math.Max(0, Math.Min(500, GetInt(d, p + "Volume", 100)));
                 t.Denoise = GetBool(d, p + "Denoise", false);
                 s.Tracks.Add(t);
+            }
+            s.Mode = Math.Max(0, Math.Min(2, GetInt(d, "Mode", 0)));
+            s.RewindPaused = GetBool(d, "RewindPaused", false);
+            s.RecordDir = GetStr(d, "RecordDir", s.RecordDir);
+            s.RecordStructure = Math.Max(0, Math.Min(4, GetInt(d, "RecordStructure", 1)));
+            s.RecordMinFreeGB = Math.Max(0, Math.Min(500, GetInt(d, "RecordMinFreeGB", 5)));
+            s.ShotDir = GetStr(d, "ShotDir", s.ShotDir);
+            s.ShotStructure = Math.Max(0, Math.Min(4, GetInt(d, "ShotStructure", 1)));
+            s.ShotFormat = GetStr(d, "ShotFormat", "png") == "jpg" ? "jpg" : "png";
+            s.ShotQuality = Math.Max(50, Math.Min(100, GetInt(d, "ShotQuality", 92)));
+            s.ShotCopy = GetBool(d, "ShotCopy", true);
+            s.ShotSound = GetBool(d, "ShotSound", true);
+            s.ShotHotkeyMods = (uint)GetInt(d, "ShotHotkeyMods", (int)s.ShotHotkeyMods);
+            s.ShotHotkeyKey = GetInt(d, "ShotHotkeyKey", s.ShotHotkeyKey);
+            s.SettingsVersion = GetInt(d, "SettingsVersion", 1);
+            if (s.SettingsVersion < 2)
+            {
+                // Umstieg auf 2.0: neue Farben (wenn noch die alten Standardfarben eingestellt waren),
+                // das alte "Buffer an/aus"-Kürzel wird zum Aufnahme-Kürzel Alt+F9
+                if (s.AccentArgb == unchecked((int)0xFF2ECC71) && s.SecondaryArgb == unchecked((int)0xFF4DA3FF))
+                {
+                    s.AccentArgb = unchecked((int)0xFF966EFF);
+                    s.SecondaryArgb = unchecked((int)0xFFFF4D8D);
+                }
+                s.ToggleHotkeyMods = Native.MOD_ALT;
+                s.ToggleHotkeyKey = 0x78; // F9
+                s.SettingsVersion = 2;
             }
             return s;
         }

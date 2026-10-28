@@ -2011,3 +2011,84 @@ namespace ReplayClip
         }
     }
 }
+
+namespace ReplayClip
+{
+    /// <summary>Umschalter für die drei Modi (Rewind / Aufnahme / Screenshot) in der Kopfleiste – mit gleitender Markierung.</summary>
+    public sealed class ModeSwitch : Control, IFxControl
+    {
+        public string[] Items = { "Rewind", "Aufnahme", "Screenshot" };
+        public string[] Icons = { "record", "video", "camera" };
+        int sel, hot = -1;
+        readonly Tween pos;
+        public event Action<int> Changed;
+
+        public ModeSwitch()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+            pos = new Tween(this, 0, 14);
+            pos.Changed = Invalidate;
+            Size = new Size(Theme.S(360), Theme.S(40));
+            Cursor = Cursors.Hand;
+        }
+
+        public int Selected
+        {
+            get { return sel; }
+            set { sel = Math.Max(0, Math.Min(Items.Length - 1, value)); pos.To(sel); Invalidate(); }
+        }
+
+        RectangleF Seg(float i)
+        {
+            float w = (Width - Theme.S(8)) / (float)Items.Length;
+            return new RectangleF(Theme.S(4) + i * w, Theme.S(4), w, Height - Theme.S(8));
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            int n = -1;
+            for (int i = 0; i < Items.Length; i++) if (Seg(i).Contains(e.Location)) n = i;
+            if (n != hot) { hot = n; Invalidate(); }
+        }
+
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hot = -1; Invalidate(); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (hot < 0 || hot == sel) return;
+            var h = Changed;
+            if (h != null) h(hot);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            ButtonRenderer.DrawParentBackground(g, ClientRectangle, this);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            var r = new RectangleF(0.5f, 0.5f, Width - 1, Height - 1);
+            Gfx.FillRound(g, Gfx.Alpha(Theme.Panel2, 230), r, r.Height / 2);
+            Gfx.DrawRound(g, Theme.Border, r, r.Height / 2, 1f);
+            var pill = Seg(pos.Value);
+            using (var b = Gfx.Gradient(pill, Theme.Accent, Theme.Secondary, 0)) Gfx.FillRound(g, b, pill, pill.Height / 2);
+            for (int i = 0; i < Items.Length; i++)
+            {
+                var s = Seg(i);
+                float on = Math.Max(0, 1 - Math.Abs(pos.Value - i));
+                if (i == hot && i != sel) Gfx.FillRound(g, Gfx.Alpha(Theme.Hover, 160), s, s.Height / 2);
+                var c = Gfx.Lerp(i == hot ? Theme.Text : Theme.TextDim, Color.White, on);
+                var f = on > 0.5f ? Theme.Semi(9.5f) : Theme.Medium(9.5f);
+                string icon = Theme.Icon(Icons[i]);
+                var iconFont = Theme.IconFont(10f);
+                var isz = Gfx.Measure(icon, iconFont);
+                var tsz = Gfx.Measure(Items[i], f);
+                int total = isz.Width + Theme.S(6) + tsz.Width;
+                int x = (int)(s.X + (s.Width - total) / 2);
+                var rr = Rectangle.Round(s);
+                TextRenderer.DrawText(g, icon, iconFont, new Rectangle(x, rr.Y, isz.Width + 2, rr.Height), c, Gfx.Left);
+                TextRenderer.DrawText(g, Items[i], f, new Rectangle(x + isz.Width + Theme.S(6), rr.Y, tsz.Width + 4, rr.Height), c, Gfx.Left);
+            }
+        }
+    }
+}

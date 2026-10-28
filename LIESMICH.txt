@@ -2,6 +2,14 @@
 Die Version steht in der Titelleiste und oben neben dem Namen.
 =====================================================================
 
+NEU IN 2.0 (BETA) – DREI MODI OBEN IN DER LEISTE
+- Rewind: Replay-Puffer läuft immer, Alt+F10 speichert die letzten Minuten. Pausieren: Einstellungen > Aufnahme
+  > Rewind (oder Tray-Menü).
+- Aufnahme: dauerhaft aufnehmen (Turniere usw.), Start/Stopp oben oder Alt+F9. Speicherort, Ordner und
+  "GB frei halten" unter Einstellungen > Aufnahme-Modus. Während einer Aufnahme ist Rewind aus.
+- Screenshot: Alt+F12 in jedem Modus. Einstellungen > Screenshots: Speicherort, Ordner (ungeordnet, nach Spiel,
+  Spiel + Monat, Monat + Spiel, Datum), PNG/JPG, Zwischenablage. Doppelklick = Bild-Editor.
+
 WAS ES MACHT
 - Nimmt im Hintergrund dauerhaft einen Monitor auf und behält die letzten X Minuten (1–20).
 - Hotkey (Standard: Alt+F10) speichert die letzten X Minuten als MP4.

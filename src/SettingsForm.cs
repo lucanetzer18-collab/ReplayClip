@@ -110,7 +110,7 @@ namespace ReplayClip
         FxToggle chkMouse, chkReset;
         Label lblEstimate;
         // Tastenkürzel
-        HotkeyBox hkSave, hkToggle;
+        HotkeyBox hkSave, hkToggle, hkShot;
         Label lblHotkeyWarn;
         // Audio
         ListBox lstTracks;
@@ -202,6 +202,8 @@ namespace ReplayClip
             AddPage("Aufnahme", "video", "Bildschirm, Qualität und Pufferlänge", BuildRecordPage());
             pageAudio = AddPage("Audiospuren", "tracks", "Welcher Ton auf welcher Spur landet – mit Live-Pegel zum Testen", BuildAudioPage());
             AddPage("Tastenkürzel", "keyboard", "Globale Tasten, die auch im Spiel funktionieren", BuildHotkeyPage());
+            AddPage("Aufnahme-Modus", "record", "Dauerhafte Aufnahmen – z.B. für Turniere", BuildRecordModePage());
+            AddPage("Screenshots", "camera", "Speicherort, Ordner und Format", BuildShotPage());
             AddPage("Bibliothek", "library", "Speicherort, Ordnerstruktur und Verhalten beim Schneiden", BuildLibraryPage());
             AddPage("Schnell-Tags", "tag", "Tags auf den Tasten 1–9", BuildQuickTagPage());
             AddPage("Aussehen", "color", "Farben, Schrift und Animationen", BuildLookPage());
@@ -308,13 +310,16 @@ namespace ReplayClip
             var buf = Ui.Grid();
             numMinutes = new FxNumber { Minimum = 1, Maximum = 20, Width = Px(130) };
             Ui.Row(buf, "Pufferlänge", Ui.Flow(numMinutes, new Label { Text = "Minuten", AutoSize = true, Margin = new Padding(Px(8), Px(8), 0, 0), ForeColor = Theme.TextDim }));
+            var chkPause = new FxToggle { Text = "Rewind pausieren (Puffer läuft im Rewind- und Screenshot-Modus sonst immer)", Checked = settings.RewindPaused, MaximumSize = new Size(Px(560), 0) };
+            Ui.Row(buf, "", chkPause);
+            chkPause.CheckedChanged += (s, e) => { settings.RewindPaused = chkPause.Checked; settings.Save(); };
             chkReset = new FxToggle { Text = "Puffer nach dem Speichern leeren", MaximumSize = new Size(Px(560), 0) };
             Ui.Row(buf, "", chkReset);
             Ui.Row(buf, "", Dim("An: Wenn du mehrere Clips hintereinander speicherst, enthält jeder nur die Zeit seit dem letzten Clip – keine doppelten Szenen. Aus: Jeder Clip enthält immer die vollen letzten Minuten.", 560));
             lblEstimate = Dim("", 560);
             Ui.Row(buf, null, lblEstimate);
 
-            Stack(page, Ui.Group("Video", video), Ui.Group("Puffer", buf));
+            Stack(page, Ui.Group("Video (gilt für Rewind und Aufnahme)", video), Ui.Group("Rewind (Replay-Puffer)", buf));
 
             cmbMonitor.SelectedIndexChanged += (s, e) =>
             {
@@ -338,7 +343,13 @@ namespace ReplayClip
             var keys = Ui.Grid();
             hkSave = new HotkeyBox();
             hkToggle = new HotkeyBox();
+            hkShot = new HotkeyBox();
             Ui.Row(keys, "Clip speichern", Ui.Field(hkSave, Px(230), null, "save"));
+            Ui.Row(keys, "Aufnahme an/aus", Ui.Field(hkToggle, Px(230), null, "record"));
+            Ui.Row(keys, "Screenshot", Ui.Field(hkShot, Px(230), null, "camera"));
+            hkShot.Enter += (s, e) => host.UnregisterHotkeys();
+            hkShot.Leave += (s, e) => { host.RegisterHotkeys(); lblHotkeyWarn.Text = host.HotkeyWarning ?? ""; };
+            hkShot.HotkeyChanged += (s, e) => { settings.ShotHotkeyMods = hkShot.Mods; settings.ShotHotkeyKey = hkShot.Key; settings.Save(); };
             cmbController = Ui.Combo(Px(260));
             foreach (var n in Gamepad.Names) cmbController.Items.Add(n);
             Ui.Row(keys, "Controller", cmbController);
@@ -415,6 +426,72 @@ namespace ReplayClip
             var page = new Panel { BackColor = Theme.Bg };
             pageAudio = page;
             BuildAudioTab();
+            return page;
+        }
+
+        /// <summary>Ordnerwahl + Strukturauswahl für Aufnahmen/Screenshots.</summary>
+        void DirRow(TableLayoutPanel g, string label, Func<string> get, Action<string> set)
+        {
+            var box = new TextBox { ReadOnly = true, Text = get() };
+            Ui.Row(g, label, Ui.Flow(Ui.Field(box, Px(400), null, "folder"),
+                Ui.Button("Ändern …", (s, e) =>
+                {
+                    using (var d = new FolderBrowserDialog { SelectedPath = box.Text, ShowNewFolderButton = true })
+                        if (d.ShowDialog(this) == DialogResult.OK) { box.Text = d.SelectedPath; set(d.SelectedPath); settings.Save(); host.LibraryChanged(); }
+                }),
+                Ui.IconButton("open", "Ordner öffnen", (s, e) => { try { Directory.CreateDirectory(get()); } catch { } Shell.OpenFolder(get()); })));
+        }
+
+        FxCombo StructureCombo(int value, Action<int> set)
+        {
+            var c = Ui.Combo(Px(320));
+            foreach (var n in Library.StructureNames) c.Items.Add(n);
+            c.SelectedIndex = Math.Max(0, Math.Min(Library.StructureNames.Length - 1, value));
+            c.SelectedIndexChanged += (s, e) => { set(c.SelectedIndex); settings.Save(); };
+            return c;
+        }
+
+        Panel BuildRecordModePage()
+        {
+            var page = ScrollPage();
+            var g = Ui.Grid();
+            DirRow(g, "Speichern in", () => settings.RecordDir, v => settings.RecordDir = v);
+            Ui.Row(g, "Ordner", StructureCombo(settings.RecordStructure, v => settings.RecordStructure = v));
+            var num = new FxNumber { Minimum = 0, Maximum = 500, Width = Px(110), Value = settings.RecordMinFreeGB };
+            num.ValueChanged += (s, e) => { settings.RecordMinFreeGB = (int)num.Value; settings.Save(); };
+            var free = new Label { AutoSize = true, ForeColor = Theme.TextDim, Margin = new Padding(Px(10), Px(8), 0, 0), Tag = "keep" };
+            try { free.Text = "GB frei halten  ·  aktuell " + ClipBrowser.FmtSize(new DriveInfo(Path.GetPathRoot(Path.GetFullPath(settings.RecordDir))).AvailableFreeSpace) + " frei"; } catch { free.Text = "GB frei halten"; }
+            Ui.Row(g, "Speicherplatz", Ui.Flow(num, free));
+            Ui.Row(g, null, Dim("Die Aufnahme stoppt automatisch, bevor die Platte voll ist (0 = aus). Pro Stunde braucht eine Aufnahme ca. " +
+                (settings.BitrateMbps * 3600 / 8 / 1000.0).ToString("0.0", CultureInfo.CurrentCulture) + " GB (bei " + settings.BitrateMbps + " Mbit/s, einstellbar unter Aufnahme).", 600));
+            Ui.Row(g, null, Dim("Bild, Ton und Encoder kommen aus „Aufnahme“ und „Audiospuren“. Während einer Aufnahme ist Rewind aus.\nSicher gegen Abstürze: Es wird laufend in eine MKV geschrieben und beim Stoppen in eine MP4 umgepackt. Bricht die Aufnahme ab (z.B. Auflösungswechsel), geht es automatisch als neuer Teil weiter.", 600));
+            Stack(page, Ui.Group("Dauerhafte Aufnahme", g));
+            return page;
+        }
+
+        Panel BuildShotPage()
+        {
+            var page = ScrollPage();
+            var g = Ui.Grid();
+            DirRow(g, "Speichern in", () => settings.ShotDir, v => settings.ShotDir = v);
+            Ui.Row(g, "Ordner", StructureCombo(settings.ShotStructure, v => settings.ShotStructure = v));
+            var fmt = Ui.Combo(Px(220));
+            fmt.Items.Add("PNG (verlustfrei)");
+            fmt.Items.Add("JPG (kleiner)");
+            fmt.SelectedIndex = settings.ShotFormat == "jpg" ? 1 : 0;
+            var q = new FxSlider { Minimum = 50, Maximum = 100, Value = settings.ShotQuality, DefaultValue = 92, Width = Px(200) };
+            var ql = new Label { AutoSize = true, ForeColor = Theme.TextDim, Margin = new Padding(Px(8), Px(6), 0, 0), Tag = "keep", Text = "JPG-Qualität " + settings.ShotQuality + " %" };
+            Ui.Row(g, "Format", Ui.Flow(fmt, q, ql));
+            fmt.SelectedIndexChanged += (s, e) => { settings.ShotFormat = fmt.SelectedIndex == 1 ? "jpg" : "png"; settings.Save(); };
+            q.ValueChanged += (s, e) => { settings.ShotQuality = q.Value; ql.Text = "JPG-Qualität " + q.Value + " %"; settings.Save(); };
+            var copy = new FxToggle { Text = "Screenshot auch in die Zwischenablage legen", Checked = settings.ShotCopy };
+            copy.CheckedChanged += (s, e) => { settings.ShotCopy = copy.Checked; settings.Save(); };
+            Ui.Row(g, "", copy);
+            var snd = new FxToggle { Text = "Auslöser-Sound", Checked = settings.ShotSound };
+            snd.CheckedChanged += (s, e) => { settings.ShotSound = snd.Checked; settings.Save(); };
+            Ui.Row(g, "", snd);
+            Ui.Row(g, null, Dim("Tastenkürzel unter „Tastenkürzel“ (Standard Alt+F12) – funktioniert in jedem Modus. Aufgenommen wird der Monitor aus „Aufnahme“. Doppelklick auf einen Screenshot öffnet den Bild-Editor (zuschneiden, Größe, Format).", 600));
+            Stack(page, Ui.Group("Screenshots", g));
             return page;
         }
 
@@ -717,7 +794,7 @@ namespace ReplayClip
             chkAutostart = new FxToggle { Text = "Mit Windows starten (minimiert im Infobereich)" };
             chkAutoBuffer = new FxToggle { Text = "Replay-Buffer beim Programmstart automatisch aktivieren" };
             chkMinimized = new FxToggle { Text = "Beim Start nur im Infobereich (Tray) starten" };
-            foreach (var c in new[] { chkAutostart, chkAutoBuffer, chkMinimized }) Ui.Row(beh, null, c);
+            foreach (var c in new[] { chkAutostart, chkMinimized }) Ui.Row(beh, null, c);
             Stack(page, Ui.Group("Verhalten", beh));
             chkAutostart.CheckedChanged += (s, e) => { if (!loading) SetAutostart(chkAutostart.Checked); };
             chkAutoBuffer.CheckedChanged += (s, e) => { if (!loading) { settings.StartBufferOnLaunch = chkAutoBuffer.Checked; settings.Save(); } };
@@ -875,6 +952,7 @@ namespace ReplayClip
             hkSave.SetHotkey(settings.SaveHotkeyMods, settings.SaveHotkeyKey);
             cmbController.SelectedIndex = Math.Max(0, Math.Min(Gamepad.Names.Length - 1, settings.ControllerCombo));
             hkToggle.SetHotkey(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey);
+            hkShot.SetHotkey(settings.ShotHotkeyMods, settings.ShotHotkeyKey);
             UpdateEstimate();
 
             numOffset.Value = Math.Max(-1000, Math.Min(1000, settings.AudioOffsetMs));

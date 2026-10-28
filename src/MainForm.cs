@@ -13,7 +13,8 @@ namespace ReplayClip
     /// <summary>Hauptfenster = Clip-Bibliothek. Status/Buffer-Steuerung oben, Einstellungen als eigenes Fenster.</summary>
     public sealed class MainForm : Form, ISettingsHost
     {
-        const int HK_SAVE = 1, HK_TOGGLE = 2;
+        const int HK_SAVE = 1, HK_TOGGLE = 2, HK_SHOT = 3;   // HK_TOGGLE = Aufnahme starten/stoppen
+        ModeSwitch modeSwitch;
         public static readonly int WM_SHOWME = SafeRegisterMessage("ReplayClip_ShowWindow_v1");
 
         static int SafeRegisterMessage(string name)
@@ -107,6 +108,7 @@ namespace ReplayClip
             recorder.StateChanged += (on, msg) => OnUi(() => OnRecorderState(on, msg));
             recorder.SaveStarted += () => OnUi(() => { if (settings.HotkeySound) SoundFx.Play("press", null, settings.SoundVolume, settings); statusMsg = "Speichere Clip …"; header.State = HeaderBar.RecState.Saving; UpdateStatus(); });
             recorder.ClipSaved += file => OnUi(() => OnClipSaved(file));
+            recorder.RecordingSaved += file => OnUi(() => OnRecordingSaved(file));
             recorder.SaveFailed += msg => OnUi(() => OnSaveFailed(msg));
             thumbs.Loaded += p => { browser.ThumbLoaded(p); detThumb.Invalidate(); };
 
@@ -114,6 +116,15 @@ namespace ReplayClip
             uiTimer.Tick += (s, e) =>
             {
                 UpdateStatus();
+                if (recorder.IsRecordingFile && settings.RecordMinFreeGB > 0 && DateTime.Now.Second % 10 == 0)
+                {
+                    long fb = FreeBytes(settings.RecordDir);
+                    if (fb >= 0 && fb < settings.RecordMinFreeGB * 1073741824L)
+                    {
+                        StopBuffer();
+                        ShowBanner("Aufnahme automatisch gestoppt: nur noch " + ClipBrowser.FmtSize(fb) + " frei.", null, null);
+                    }
+                }
                 if (probeDirty) { probeDirty = false; browser.Invalidate(); UpdateDetails(); }
             };
             uiTimer.Start();
@@ -138,7 +149,7 @@ namespace ReplayClip
         public void UnregisterHotkeys()
         {
             if (!IsHandleCreated) return;
-            try { Native.UnregisterHotKey(Handle, HK_SAVE); Native.UnregisterHotKey(Handle, HK_TOGGLE); } catch { }
+            try { Native.UnregisterHotKey(Handle, HK_SAVE); Native.UnregisterHotKey(Handle, HK_TOGGLE); Native.UnregisterHotKey(Handle, HK_SHOT); } catch { }
         }
 
         public void RestartNeeded()
@@ -157,7 +168,7 @@ namespace ReplayClip
         public void FfmpegReady()
         {
             HideBanner();
-            if (settings.StartBufferOnLaunch && !recorder.IsActive) StartBuffer();
+            EnsureModeState();
         }
 
         public void AppearanceChanged()
@@ -189,8 +200,11 @@ namespace ReplayClip
         {
             // ---- Kopfzeile ----
             header = new HeaderBar { Dock = DockStyle.Top, Version = "v" + Program.Version };
-            btnSaveNow = new FxButton { Text = "Clip speichern", IconName = "save", AutoSize = true };
-            btnSaveNow.Click += (s, e) => recorder.SaveClip();
+            btnSaveNow = new FxButton { Text = "Clip speichern", IconName = "save", Kind = FxKind.Primary, AutoSize = true };
+            btnSaveNow.Click += (s, e) => DoModeAction();
+            modeSwitch = new ModeSwitch { Selected = settings.Mode };
+            modeSwitch.Changed += SetMode;
+            Tips.Set(modeSwitch, "Rewind = immer die letzten Minuten (Clip speichern)  ·  Aufnahme = dauerhaft aufnehmen  ·  Screenshot");
             btnToggle = new FxButton { Text = "Buffer starten", IconName = "record", Kind = FxKind.Primary, AutoSize = false, Size = new Size(Px(170), Px(40)) };
             btnToggle.Click += (s, e) => ToggleBuffer();
             btnSettings = Ui.IconButton("settings", "Einstellungen", (s, e) => OpenSettings(null));
@@ -198,10 +212,10 @@ namespace ReplayClip
             btnSettings.Kind = FxKind.Normal;
             btnSettings.Margin = new Padding(Px(4), 0, 0, 0);
             header.Controls.Add(btnSaveNow);
-            header.Controls.Add(btnToggle);
+            header.Controls.Add(modeSwitch);
             header.Controls.Add(btnSettings);
             header.Resize += (s, e) => LayoutHeader();
-            foreach (var b in new Control[] { btnSaveNow, btnToggle, btnSettings }) b.SizeChanged += (s, e) => LayoutHeader();
+            foreach (var b in new Control[] { btnSaveNow, modeSwitch, btnSettings }) b.SizeChanged += (s, e) => LayoutHeader();
 
             // ---- Hinweisbalken ----
             banner = new Panel { Dock = DockStyle.Top, Height = Px(46), BackColor = Gfx.Lerp(Theme.Bg, Theme.Warning, 0.14f), Visible = false, Padding = new Padding(Px(18), Px(7), Px(12), Px(7)), Tag = "keep" };
@@ -302,10 +316,10 @@ namespace ReplayClip
         {
             // Buttons rechtsbündig, Status-Block und Pegel dazwischen
             int x = header.Width - Px(18);
-            foreach (var b in new Control[] { btnSettings, btnToggle, btnSaveNow })
+            foreach (var b in new Control[] { btnSettings, btnSaveNow, modeSwitch })
             {
                 if (b.AutoSize) b.Size = b.GetPreferredSize(Size.Empty);
-                if (b == btnToggle && b.Width < Px(170)) b.Width = Px(170);
+                if (b == btnSaveNow && b.Width < Px(190)) { b.AutoSize = false; b.Size = new Size(Px(190), Px(40)); }
                 x -= b.Width;
                 b.Location = new Point(x, (header.Height - b.Height) / 2);
                 x -= Px(8);
@@ -364,7 +378,7 @@ namespace ReplayClip
             }
             var items = new List<NavEntry>();
             items.Add(new NavEntry { Header = true, Text = "Bibliothek" });
-            items.Add(new NavEntry { Kind = 1, Text = "Alle Clips", Icon = "library", Count = all.Count });
+            items.Add(new NavEntry { Kind = 1, Text = settings.Mode == 1 ? "Alle Aufnahmen" : settings.Mode == 2 ? "Alle Screenshots" : "Alle Clips", Icon = settings.Mode == 2 ? "camera" : "library", Count = all.Count });
             items.Add(new NavEntry { Kind = 2, Text = "Favoriten", Icon = "starfill", Count = favs });
             items.Add(new NavEntry { Kind = 3, Text = "Schnitte", Icon = "cut", Count = cuts });
             if (games.Count > 0)
@@ -388,11 +402,12 @@ namespace ReplayClip
         {
             if (scanning) { rescanAgain = true; return; }
             scanning = true;
-            string root = settings.SaveDir;
+            string root = LibraryRoot();
+            var pats = settings.Mode == 2 ? new[] { "*.png", "*.jpg", "*.jpeg" } : new[] { "*.mp4" };
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 List<ClipItem> items;
-                try { items = Library.Scan(root); } catch { items = new List<ClipItem>(); }
+                try { items = Library.Scan(root, pats); } catch { items = new List<ClipItem>(); }
                 OnUi(() =>
                 {
                     all = items;
@@ -444,7 +459,9 @@ namespace ReplayClip
             if (filterKind == 2) browser.EmptyText = "Noch keine Favoriten.\nKlick auf den Stern eines Clips oder drück F.";
             else if (filterKind == 3) browser.EmptyText = "Noch keine Schnitte.\nDoppelklick auf einen Clip öffnet den Editor.";
             else if (q.Length > 0) browser.EmptyText = "Nichts gefunden für „" + q + "“.";
-            else browser.EmptyText = "Noch keine Clips hier.\nStarte oben den Replay-Buffer und drück im Spiel " + hk + ".";
+            else if (settings.Mode == 1) browser.EmptyText = "Noch keine Aufnahmen.\nOben „Aufnahme starten“ oder " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey) + " drücken.";
+            else if (settings.Mode == 2) browser.EmptyText = "Noch keine Screenshots.\nIm Spiel " + HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) + " drücken.";
+            else browser.EmptyText = "Noch keine Clips hier.\nIm Spiel " + hk + " drücken – Rewind hält immer die letzten Minuten bereit.";
             browser.SetItems(list);
             stLeft.Text = list.Count == all.Count
                 ? string.Format(CultureInfo.CurrentCulture, "{0} Clips  ·  {1}", list.Count, ClipBrowser.FmtSize(size))
@@ -466,7 +483,7 @@ namespace ReplayClip
             lock (probeQueue)
             {
                 probeQueue.Clear();
-                foreach (var it in all) if (it.Meta.Duration <= 0) probeQueue.Enqueue(it);
+                foreach (var it in all) if (it.Meta.Duration <= 0 && !Library.IsImage(it.Path)) probeQueue.Enqueue(it);
                 if (probeQueue.Count == 0 || (probeThread != null && probeThread.IsAlive)) return;
             }
             probeThread = new Thread(() =>
@@ -847,6 +864,7 @@ namespace ReplayClip
         {
             var sel = browser.Selected;
             if (sel.Count == 0 || discordBusy) return;
+            if (Library.IsImage(sel[0].Path)) { CopySelected(); return; } // Bilder passen ohnehin – einfach kopieren
             string ff = Ffmpeg.Find(settings);
             if (ff == null) { FxDialog.Info(this, "FFmpeg fehlt", "FFmpeg wird dafür benötigt (Einstellungen › Speicher & FFmpeg).", "warning"); return; }
             string file = sel[0].Path;
@@ -999,6 +1017,14 @@ namespace ReplayClip
 
         void OpenEditor(string path)
         {
+            if (Library.IsImage(path))
+            {
+                if (!File.Exists(path)) { Rescan(); return; }
+                var ie = new ImageEditorForm(path) { Icon = Icon };
+                ie.Saved += f => { selectAfterScan = f; Rescan(); };
+                ie.Show(this);
+                return;
+            }
             string ff = Ffmpeg.Find(settings);
             if (ff == null) { FxDialog.Info(this, "FFmpeg fehlt", "FFmpeg wird für den Editor benötigt (Einstellungen › Speicher & FFmpeg).", "warning"); return; }
             if (!File.Exists(path)) { Rescan(); return; }
@@ -1086,6 +1112,7 @@ namespace ReplayClip
             using (var f = new SettingsForm(settings, this, page) { Icon = Icon })
                 f.ShowDialog(this);
             BuildQuickButtons();
+            EnsureModeState();
             Rescan();
             UpdateStatus();
         }
@@ -1131,10 +1158,7 @@ namespace ReplayClip
                 ShowBanner("FFmpeg wurde nicht gefunden – wird für Aufnahme, Vorschaubilder und Editor benötigt.", "Jetzt einrichten", () => OpenSettings("Speicher & FFmpeg"));
                 if (startHidden) ShowFromTray();
             }
-            else if (settings.StartBufferOnLaunch)
-            {
-                StartBuffer();
-            }
+            else EnsureModeState();
             UpdateStatus();
         }
 
@@ -1153,7 +1177,8 @@ namespace ReplayClip
             {
                 int id = m.WParam.ToInt32();
                 if (id == HK_SAVE) recorder.SaveClip();
-                else if (id == HK_TOGGLE) ToggleBuffer();
+                else if (id == HK_TOGGLE) ToggleRecording();
+                else if (id == HK_SHOT) TakeScreenshot();
                 return;
             }
             if (m.Msg == WM_SHOWME && WM_SHOWME != 0)
@@ -1214,7 +1239,9 @@ namespace ReplayClip
             Theme.Menu(menu);
             menu.Items.Add("Öffnen", null, (s, e) => ShowFromTray());
             menu.Items.Add("Clip speichern", null, (s, e) => recorder.SaveClip());
-            trayToggle = new ToolStripMenuItem("Replay-Buffer starten", null, (s, e) => ToggleBuffer());
+            menu.Items.Add("Screenshot", null, (s, e) => TakeScreenshot());
+            menu.Items.Add("Aufnahme starten / stoppen", null, (s, e) => ToggleRecording());
+            trayToggle = new ToolStripMenuItem("Rewind pausieren", null, (s, e) => { settings.RewindPaused = !settings.RewindPaused; settings.Save(); EnsureModeState(); UpdateStatus(); });
             menu.Items.Add(trayToggle);
             menu.Items.Add("Clips-Ordner öffnen", null, (s, e) => Shell.OpenFolder(settings.SaveDir));
             menu.Items.Add("Einstellungen …", null, (s, e) => { ShowFromTray(); OpenSettings(null); });
@@ -1241,8 +1268,9 @@ namespace ReplayClip
             var warn = new List<string>();
             if (settings.SaveHotkeyKey != 0 && !Native.RegisterHotKey(Handle, HK_SAVE, settings.SaveHotkeyMods | Native.MOD_NOREPEAT, (uint)settings.SaveHotkeyKey))
                 warn.Add(HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey));
-            // Tastenkürzel "Buffer an/aus" entfällt (Start/Stopp über den Knopf oben bzw. das Tray-Menü)
-            if (false && settings.ToggleHotkeyKey != 0 && !Native.RegisterHotKey(Handle, HK_TOGGLE, settings.ToggleHotkeyMods | Native.MOD_NOREPEAT, (uint)settings.ToggleHotkeyKey))
+            if (settings.ShotHotkeyKey != 0 && !Native.RegisterHotKey(Handle, HK_SHOT, settings.ShotHotkeyMods | Native.MOD_NOREPEAT, (uint)settings.ShotHotkeyKey))
+                warn.Add(HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey));
+            if (settings.ToggleHotkeyKey != 0 && !Native.RegisterHotKey(Handle, HK_TOGGLE, settings.ToggleHotkeyMods | Native.MOD_NOREPEAT, (uint)settings.ToggleHotkeyKey))
                 warn.Add(HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey));
             hotkeyWarning = warn.Count > 0
                 ? "Bereits von einem anderen Programm belegt: " + string.Join(", ", warn.ToArray()) + " (z.B. NVIDIA App – dort Instant Replay/Overlay deaktivieren oder hier eine andere Taste wählen)."
@@ -1275,6 +1303,147 @@ namespace ReplayClip
             bannerAction = null;
             int h0 = banner.Height;
             Anim.Over(banner, 0.2f, t => banner.Height = (int)(h0 * (1 - t)), () => { banner.Visible = false; banner.Height = Px(46); });
+        }
+
+        // ======================= Modi (2.0) =======================
+
+        string LibraryRoot()
+        {
+            return settings.Mode == 1 ? settings.RecordDir : settings.Mode == 2 ? settings.ShotDir : settings.SaveDir;
+        }
+
+        void SetMode(int m)
+        {
+            if (m == settings.Mode) return;
+            if (recorder.IsRecordingFile && !FxDialog.Ask(this, "Aufnahme läuft", "Die laufende Aufnahme wird beendet und gespeichert.", "Beenden & wechseln", "Abbrechen", false))
+            {
+                modeSwitch.Selected = settings.Mode;
+                return;
+            }
+            settings.Mode = m;
+            settings.Save();
+            modeSwitch.Selected = m;
+            filterKind = 1; filterValue = "";
+            EnsureModeState();
+            Rescan();
+            UpdateStatus();
+        }
+
+        /// <summary>Puffer/Aufnahme passend zum Modus starten oder stoppen.</summary>
+        void EnsureModeState()
+        {
+            if (Ffmpeg.Find(settings) == null) return;
+            bool wantRewind = settings.Mode != 1 && !settings.RewindPaused;
+            if (recorder.IsRecordingFile) { if (settings.Mode != 1) StopBuffer(); return; }
+            if (recorder.IsActive && !wantRewind) StopBuffer();
+            else if (!recorder.IsActive && wantRewind && !starting) StartBuffer();
+        }
+
+        void DoModeAction()
+        {
+            if (settings.Mode == 1) ToggleRecording();
+            else if (settings.Mode == 2) TakeScreenshot();
+            else recorder.SaveClip();
+        }
+
+        string recordApp = "";
+
+        /// <summary>Dauer-Aufnahme starten/stoppen (wechselt bei Bedarf in den Aufnahme-Modus).</summary>
+        void ToggleRecording()
+        {
+            if (recorder.IsRecordingFile) { StopBuffer(); return; }
+            if (Ffmpeg.Find(settings) == null) { OpenSettings("Speicher & FFmpeg"); return; }
+            if (settings.Mode != 1)
+            {
+                settings.Mode = 1; settings.Save(); modeSwitch.Selected = 1;
+                filterKind = 1; filterValue = ""; Rescan();
+            }
+            long free = FreeBytes(settings.RecordDir);
+            if (free >= 0 && free < settings.RecordMinFreeGB * 1073741824L)
+            {
+                ShowBanner("Zu wenig Speicherplatz für die Aufnahme (" + ClipBrowser.FmtSize(free) + " frei, mindestens " + settings.RecordMinFreeGB + " GB eingestellt).", "Einstellungen", () => OpenSettings("Aufnahme-Modus"));
+                return;
+            }
+            string app = Native.ForegroundAppName();
+            if (string.IsNullOrEmpty(app) || app.IndexOf("ReplayClip", StringComparison.OrdinalIgnoreCase) >= 0) app = "Aufnahme";
+            recordApp = app;
+            string safe = Native.SafeFileName(app);
+            var now = DateTime.Now;
+            string final = Path.Combine(Library.FolderIn(settings.RecordDir, settings.RecordStructure, safe, now), safe + " " + now.ToString("yyyy.MM.dd - HH.mm.ss", CultureInfo.InvariantCulture) + ".mp4");
+            starting = true;
+            statusMsg = "Starte Aufnahme …";
+            UpdateStatus();
+            var snap = settings.Clone();
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                if (recorder.IsActive) recorder.Stop();   // Rewind-Puffer aus, Aufnahme übernimmt
+                recorder.StartRecording(snap, final);
+            });
+        }
+
+        static long FreeBytes(string dir)
+        {
+            try { return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(dir))).AvailableFreeSpace; } catch { return -1; }
+        }
+
+        void OnRecordingSaved(string file)
+        {
+            var m = Library.Get(file);
+            if (recordApp.Length > 0) m.App = recordApp;
+            Library.SaveSoon();
+            SoundFx.PlaySaved(settings);
+            Toast.Show(this, "Aufnahme gespeichert", Path.GetFileName(file) + "\nKlicken zum Anzeigen", "check", Theme.Accent, null,
+                () => { ShowFromTray(); if (settings.Mode != 1) SetMode(1); selectAfterScan = file; Rescan(); });
+            if (settings.Mode == 1) { selectAfterScan = file; Rescan(); }
+        }
+
+        /// <summary>Screenshot vom Aufnahme-Monitor: speichern (Ordner nach Einstellung), optional in die Zwischenablage.</summary>
+        void TakeScreenshot()
+        {
+            var b = CaptureScreen();
+            Bitmap bmp;
+            try
+            {
+                bmp = new Bitmap(b.Width, b.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(b.Location, Point.Empty, b.Size, CopyPixelOperation.SourceCopy);
+            }
+            catch (Exception ex) { ShowBanner("Screenshot fehlgeschlagen: " + ex.Message, null, null); return; }
+            if (settings.ShotSound) SoundFx.Play("camera", null, settings.SoundVolume, settings);
+            if (settings.ShotCopy) { try { Clipboard.SetImage(bmp); } catch { } }
+            string app = Native.ForegroundAppName();
+            if (string.IsNullOrEmpty(app)) app = "Desktop";
+            string safe = Native.SafeFileName(app);
+            var now = DateTime.Now;
+            bool jpg = settings.ShotFormat == "jpg";
+            string dir = Library.FolderIn(settings.ShotDir, settings.ShotStructure, safe, now);
+            string file = Path.Combine(dir, safe + " " + now.ToString("yyyy.MM.dd - HH.mm.ss", CultureInfo.InvariantCulture) + (jpg ? ".jpg" : ".png"));
+            int q = settings.ShotQuality;
+            Image thumb = null;
+            try { thumb = bmp.GetThumbnailImage(320, Math.Max(1, 320 * bmp.Height / Math.Max(1, bmp.Width)), null, IntPtr.Zero); } catch { }
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string err = null;
+                try
+                {
+                    Directory.CreateDirectory(dir);
+                    for (int n = 2; File.Exists(file); n++) file = Path.Combine(dir, Path.GetFileNameWithoutExtension(file) + " " + n + Path.GetExtension(file));
+                    ImageEditorForm.SaveImage(bmp, file, jpg, q);
+                }
+                catch (Exception ex) { err = ex.Message; }
+                finally { bmp.Dispose(); }
+                OnUi(() =>
+                {
+                    if (err != null) { ShowBanner("Screenshot nicht gespeichert: " + err, null, null); return; }
+                    var m = Library.Get(file);
+                    m.App = app;
+                    Library.SaveSoon();
+                    if (settings.OverlayToast && !(ContainsFocus && Visible))
+                        OverlayToast.ShowMessage("Screenshot gespeichert", app + (settings.ShotCopy ? "  ·  in der Zwischenablage" : ""), Theme.Accent, CaptureScreen(), settings.OverlayPos);
+                    Toast.Show(this, "Screenshot gespeichert", app + (settings.ShotCopy ? " · auch in der Zwischenablage" : "") + "\nKlicken zum Bearbeiten", "camera", Theme.Accent, thumb,
+                        () => { ShowFromTray(); OpenEditor(file); });
+                    if (settings.Mode == 2) { selectAfterScan = file; Rescan(); }
+                });
+            });
         }
 
         // ======================= Updates =======================
@@ -1422,11 +1591,13 @@ namespace ReplayClip
             statusMsg = on ? "" : (msg ?? "");
             if (!on && !string.IsNullOrEmpty(msg) && msg != "Replay-Buffer gestoppt" && !msg.Contains("starte neu"))
             {
-                ShowBanner(msg.Replace("\n", "  ·  "), "Erneut versuchen", StartBuffer);
+                ShowBanner(msg.Replace("\n", "  ·  "), "Erneut versuchen", settings.Mode == 1 ? (Action)ToggleRecording : StartBuffer);
                 if (settings.NotifyBalloon) { updateBalloon = false; tray.ShowBalloonTip(4000, "ReplayClip", msg, ToolTipIcon.Warning); }
                 SoundFx.PlayError(settings);
             }
-            if (on) Toast.Show(this, "Replay-Buffer läuft", "Speichern mit " + HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey) +
+            if (msg == "Aufnahme gespeichert") { UpdateStatus(); EnsureModeState(); return; }
+            if (on && recorder.IsRecordingFile) { Toast.Show(this, "Aufnahme läuft", "Stoppen mit " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey) + " oder oben „Aufnahme stoppen“.", "record", Theme.Rec); UpdateStatus(); return; }
+            if (on && msg == "Replay-Buffer läuft") Toast.Show(this, "Rewind läuft", "Speichern mit " + HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey) +
                 (settings.ResetBufferAfterSave ? " – danach beginnt der Puffer neu." : "."), "record", Theme.Rec);
             UpdateStatus();
         }
@@ -1541,15 +1712,48 @@ namespace ReplayClip
             bool on = recorder.IsActive;
             Icon want = on ? iconOn : iconOff;
             if (tray.Icon != want) { tray.Icon = want; Icon = want; }
-            trayToggle.Text = on ? "Replay-Buffer stoppen" : "Replay-Buffer starten";
-            btnToggle.Text = on ? "Buffer stoppen" : (starting ? "Starte …" : "Buffer starten");
-            btnToggle.IconName = on ? "stop" : "record";
-            btnToggle.Kind = on ? FxKind.Normal : FxKind.Primary;
-            btnSaveNow.Enabled = on && !recorder.IsSaving;
+            trayToggle.Text = settings.RewindPaused ? "Rewind fortsetzen" : "Rewind pausieren";
             string hk = HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey);
-            btnSaveNow.Hint = settings.SaveHotkeyKey != 0 ? hk : null;
+            bool rec = recorder.IsRecordingFile;
+            if (modeSwitch.Selected != settings.Mode) modeSwitch.Selected = settings.Mode;
+            // Aktionsknopf passend zum Modus
+            if (settings.Mode == 1)
+            {
+                btnSaveNow.Text = rec ? "Aufnahme stoppen" : "Aufnahme starten";
+                btnSaveNow.IconName = rec ? "stop" : "record";
+                btnSaveNow.Kind = rec ? FxKind.Danger : FxKind.Primary;
+                btnSaveNow.Enabled = !starting;
+                btnSaveNow.Hint = settings.ToggleHotkeyKey != 0 ? HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey) : null;
+            }
+            else if (settings.Mode == 2)
+            {
+                btnSaveNow.Text = "Screenshot";
+                btnSaveNow.IconName = "camera";
+                btnSaveNow.Kind = FxKind.Primary;
+                btnSaveNow.Enabled = true;
+                btnSaveNow.Hint = settings.ShotHotkeyKey != 0 ? HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) : null;
+            }
+            else
+            {
+                btnSaveNow.Text = "Clip speichern";
+                btnSaveNow.IconName = "save";
+                btnSaveNow.Kind = FxKind.Primary;
+                btnSaveNow.Enabled = on && !rec && !recorder.IsSaving;
+                btnSaveNow.Hint = settings.SaveHotkeyKey != 0 ? hk : null;
+            }
 
-            if (recorder.IsSaving)
+            if (rec)
+            {
+                starting = false;
+                header.State = HeaderBar.RecState.Recording;
+                var el = DateTime.Now - recorder.RecordStarted;
+                string free = "";
+                try { free = "  ·  " + ClipBrowser.FmtSize(new DriveInfo(Path.GetPathRoot(Path.GetFullPath(settings.RecordDir))).AvailableFreeSpace) + " frei"; } catch { }
+                header.StatusLine = "● Aufnahme läuft";
+                header.SubLine = string.Format("{0}:{1:00}:{2:00}{3}  ·  Stopp mit {4}", (int)el.TotalHours, el.Minutes, el.Seconds, free, HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey));
+                header.BufferFill = 1;
+            }
+            else if (recorder.IsSaving)
             {
                 header.State = HeaderBar.RecState.Saving;
                 header.StatusLine = "Speichere Clip …";
@@ -1561,7 +1765,7 @@ namespace ReplayClip
                 var span = DateTime.Now - recorder.ActiveSince;
                 double max = settings.BufferMinutes * 60.0;
                 double filled = Math.Max(0, Math.Min(span.TotalSeconds, max));
-                header.StatusLine = "Aufnahme läuft";
+                header.StatusLine = "Rewind läuft";
                 header.SubLine = string.Format("Puffer {0}:{1:00} / {2}:00  ·  {3} speichert", (int)filled / 60, (int)filled % 60, settings.BufferMinutes, hk);
                 header.BufferFill = (float)(filled / max);
             }
@@ -1575,8 +1779,10 @@ namespace ReplayClip
             else
             {
                 header.State = HeaderBar.RecState.Off;
-                header.StatusLine = "Bereit";
-                header.SubLine = statusMsg.Length > 0 && statusMsg.Length < 90 ? statusMsg : "Replay-Buffer ist aus";
+                header.StatusLine = settings.Mode == 1 ? "Bereit zur Aufnahme" : settings.RewindPaused ? "Rewind pausiert" : "Bereit";
+                header.SubLine = statusMsg.Length > 0 && statusMsg.Length < 90 && statusMsg != "Aufnahme gespeichert" ? statusMsg
+                    : settings.Mode == 1 ? "Start mit „Aufnahme starten“ oder " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey)
+                    : settings.RewindPaused ? "Fortsetzen: Einstellungen › Aufnahme › Rewind" : "Rewind ist aus";
                 header.BufferFill = 0;
             }
             header.Invalidate();

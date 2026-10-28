@@ -120,7 +120,7 @@ namespace ReplayClip
         void ScheduleStrip(ClipItem it)
         {
             if (scrubTimer != null) { scrubTimer.Dispose(); scrubTimer = null; }
-            scrubPath = it != null && !ListMode && HoverPreview && !it.Placeholder ? it.Path : null;
+            scrubPath = it != null && !ListMode && HoverPreview && !it.Placeholder && !Library.IsImage(it.Path) ? it.Path : null;
             scrubX = -1;
             if (scrubPath == null || strips.ContainsKey(scrubPath)) return;
             string path = scrubPath;

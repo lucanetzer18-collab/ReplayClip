@@ -7,8 +7,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("ReplayClip")]
 [assembly: AssemblyDescription("Replay-Buffer mit NVENC und getrennten Tonspuren")]
 [assembly: AssemblyProduct("ReplayClip")]
-[assembly: AssemblyVersion("1.6.0.0")]
-[assembly: AssemblyFileVersion("1.6.0.0")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
 [assembly: ComVisible(false)]
 
 namespace ReplayClip
@@ -20,9 +20,12 @@ namespace ReplayClip
         {
             get
             {
-                return FormatVersion(typeof(Program).Assembly.GetName().Version);
+                return FormatVersion(typeof(Program).Assembly.GetName().Version) + (Channel.Length > 0 ? " " + Channel : "");
             }
         }
+
+        /// <summary>Kanal-Zusatz in der Anzeige (z.B. "Beta"), leer = stabile Version.</summary>
+        public const string Channel = "Beta";
 
         public static string FormatVersion(Version v)
         {

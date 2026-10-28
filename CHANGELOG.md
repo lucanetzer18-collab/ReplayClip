@@ -3,6 +3,13 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.0.0
+**2.0 Beta – neues Design (Violett/Pink) und drei Modi oben in der Leiste:**
+- **Rewind**: der bekannte Replay-Puffer – läuft jetzt immer, Clip speichern mit Alt+F10. Der Knopf „Buffer starten/stoppen“ entfällt; pausieren geht unter Einstellungen › Aufnahme › Rewind (oder im Tray-Menü).
+- **Aufnahme**: dauerhafte Aufnahme ohne Zeitlimit, z.B. für Turniere. Start/Stopp oben oder mit Alt+F9. Eigener Speicherort, Ordnerstruktur und Mindest-Speicherplatz (stoppt automatisch, bevor die Platte voll ist). Absturzsicher (MKV → MP4), bei Abbruch geht es als neuer Teil weiter.
+- **Screenshot**: Alt+F12 (in jedem Modus) – eigener Speicherort, Ordner ungeordnet / nach Spiel / Spiel + Monat / Monat + Spiel / Datum, PNG oder JPG, auf Wunsch in die Zwischenablage. Bild-Editor: zuschneiden, Größe ändern, drehen, Format wählen.
+- Die Bibliothek zeigt je nach Modus Clips, Aufnahmen oder Screenshots.
+
 ## 1.6.0
 - **Für Discord**: Clip mit einem Klick unter Discords Upload-Grenze rechnen (10 / 50 / 500 MB einstellbar) – landet direkt in der Zwischenablage, in Discord Strg+V.
 - **Hover-Vorschau** in der Bibliothek: Maus über eine Kachel halten und links/rechts bewegen = durch den Clip spulen.

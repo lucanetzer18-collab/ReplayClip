@@ -235,6 +235,7 @@ namespace ReplayClip
 
         static readonly Dictionary<string, string[]> icons = new Dictionary<string, string[]>
         {
+            { "camera", new[] { "\uE722", "◎" } }, { "crop", new[] { "\uE7A8", "⌗" } }, { "rotate", new[] { "\uE7AD", "↻" } },
             { "record", new[] { "", "●" } }, { "settings", new[] { "", "⚙" } }, { "save", new[] { "", "⤓" } },
             { "play", new[] { "", "▶" } }, { "pause", new[] { "", "❚❚" } }, { "stop", new[] { "", "■" } },
             { "cut", new[] { "", "✂" } }, { "star", new[] { "", "☆" } }, { "starfill", new[] { "", "★" } },

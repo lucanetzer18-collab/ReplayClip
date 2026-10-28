@@ -110,6 +110,7 @@ namespace ReplayClip
             {
                 if (active) return;
                 failCount = 0;
+                recordFile = recordFinal = null;
                 try
                 {
                     StartInternal(s.Clone());
@@ -200,10 +201,81 @@ namespace ReplayClip
             int b = Math.Max(2, cfg.BitrateMbps);
             sb.Append(Encoders.BufferArgs(encKind, cfg.Codec == "hevc", b, cfg.Fps * SegmentSeconds));
             if (engine.TrackCount > 0) sb.Append("-c:a aac -b:a ").Append(cfg.AudioBitrateK).Append("k ");
+            if (recordFile != null)
+            {
+                // Dauer-Aufnahme: direkt in eine MKV-Datei (übersteht Abstürze), beim Stoppen wird daraus eine MP4
+                for (int i = 0; i < engine.TrackCount && i < cfg.Tracks.Count; i++)
+                    sb.AppendFormat("-metadata:s:a:{0} title=\"{1}\" ", i, (cfg.Tracks[i].Name ?? "").Replace("\"", "'"));
+                sb.Append("-f matroska ").Append(Ffmpeg.Q(recordFile));
+                return sb.ToString();
+            }
             sb.Append("-f segment -segment_time ").Append(SegmentSeconds)
               .Append(" -segment_format mpegts -segment_start_number 0 -reset_timestamps 0 ")
               .Append(Ffmpeg.Q(Path.Combine(sessionDir, "seg_%08d.ts")));
             return sb.ToString();
+        }
+
+        // ---------------- Dauer-Aufnahme ----------------
+        volatile string recordFile, recordFinal;
+        int recordPart;
+        public bool IsRecordingFile { get { return active && recordFile != null; } }
+        public DateTime RecordStarted;
+        public string RecordFinalPath { get { return recordFinal; } }
+        /// <summary>Fertige Aufnahme (MP4) liegt bereit.</summary>
+        public event Action<string> RecordingSaved;
+
+        /// <summary>Dauer-Aufnahme starten (statt Replay-Puffer). finalMp4 = Zieldatei.</summary>
+        public void StartRecording(Settings s, string finalMp4)
+        {
+            lock (sync)
+            {
+                if (active) return;
+                failCount = 0;
+                recordPart = 1;
+                recordFinal = finalMp4;
+                recordFile = Path.Combine(Path.GetDirectoryName(finalMp4), "~replayclip_rec_" + Path.GetFileNameWithoutExtension(finalMp4) + ".mkv");
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(finalMp4));
+                    StartInternal(s.Clone());
+                    RecordStarted = DateTime.Now;
+                    Raise(true, "Aufnahme läuft");
+                }
+                catch (Exception ex)
+                {
+                    TearDown();
+                    recordFile = recordFinal = null;
+                    Raise(false, ex.Message);
+                }
+            }
+        }
+
+        /// <summary>MKV in MP4 umpacken (ohne neu zu kodieren, dauert Sekunden) und melden.</summary>
+        void FinalizeRecording(string mkv, string mp4)
+        {
+            string ff = ffPath;
+            var meta = new StringBuilder();
+            if (cfg != null)
+                for (int i = 0; i < cfg.Tracks.Count; i++)
+                {
+                    string n = (cfg.Tracks[i].Name ?? "").Replace("\"", "'");
+                    meta.AppendFormat("-metadata:s:a:{0} title=\"{1}\" -metadata:s:a:{0} handler_name=\"{1}\" ", i, n);
+                }
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    if (!File.Exists(mkv) || new FileInfo(mkv).Length < 1024) { try { File.Delete(mkv); } catch { } return; }
+                    var err = new StringBuilder();
+                    var p = Ffmpeg.Launch(ff, "-hide_banner -loglevel error -nostdin -y -i " + Ffmpeg.Q(mkv) + " -map 0 -c copy " + meta + "-movflags +faststart " + Ffmpeg.Q(mp4), false, err);
+                    p.WaitForExit();
+                    if (p.ExitCode == 0 && File.Exists(mp4)) { try { File.Delete(mkv); } catch { } }
+                    else mp4 = mkv;   // Umpacken ging schief -> MKV behalten (spielt VLC trotzdem ab)
+                    var h = RecordingSaved;
+                    if (h != null) h(mp4);
+                }
+                catch { }
+            });
         }
 
         public void Stop()
@@ -212,7 +284,10 @@ namespace ReplayClip
             {
                 if (!active) return;
                 stopping = true;
+                string mkv = recordFile, mp4 = recordFinal;
                 TearDown();
+                recordFile = recordFinal = null;
+                if (mkv != null) { FinalizeRecording(mkv, mp4); Raise(false, "Aufnahme gespeichert"); return; }
                 Raise(false, "Replay-Buffer gestoppt");
             }
         }
@@ -241,9 +316,29 @@ namespace ReplayClip
                 if (stopping || ff != p) return;
                 string err;
                 lock (ffErr) err = LastLines(ffErr.ToString(), 4);
+                string mkv = recordFile, mp4 = recordFinal;
                 TearDown();
                 bool quickFail = (DateTime.UtcNow - lastStart).TotalSeconds < 20;
                 failCount = quickFail ? failCount + 1 : 1;
+                if (mkv != null)
+                {
+                    // Aufnahme abgebrochen (z.B. Auflösungswechsel): Bisheriges sichern und als neuer Teil weiterlaufen
+                    FinalizeRecording(mkv, mp4);
+                    if (failCount <= 3)
+                    {
+                        recordPart++;
+                        string baseName = Path.GetFileNameWithoutExtension(mp4);
+                        int k = baseName.IndexOf(" (Teil ");
+                        if (k > 0) baseName = baseName.Substring(0, k);
+                        recordFinal = Path.Combine(Path.GetDirectoryName(mp4), baseName + " (Teil " + recordPart + ").mp4");
+                        recordFile = Path.Combine(Path.GetDirectoryName(mp4), "~replayclip_rec_" + baseName + "_" + recordPart + ".mkv");
+                        Thread.Sleep(1500);
+                        try { StartInternal(cfg); Raise(true, "Aufnahme läuft (Teil " + recordPart + ")"); }
+                        catch (Exception ex) { TearDown(); recordFile = recordFinal = null; Raise(false, ex.Message); }
+                    }
+                    else { recordFile = recordFinal = null; Raise(false, "Aufnahme beendet – FFmpeg-Fehler:\n" + err); }
+                    return;
+                }
                 if (failCount <= 3)
                 {
                     // z.B. Auflösungswechsel im Spiel -> ddagrab bricht ab -> automatisch neu starten
@@ -314,7 +409,7 @@ namespace ReplayClip
             while (true)
             {
                 Thread.Sleep(3000);
-                if (!active) continue;
+                if (!active || recordFile != null) continue;
                 if (saving != 0) continue;
                 string dir = sessionDir;
                 try
@@ -342,6 +437,7 @@ namespace ReplayClip
                 if (h != null) h("Replay-Buffer ist nicht aktiv.");
                 return;
             }
+            if (recordFile != null) return; // Dauer-Aufnahme läuft – kein Replay-Puffer
             if (Interlocked.CompareExchange(ref saving, 1, 0) != 0) return;
             string app = Native.ForegroundAppName();
             DateTime when = DateTime.Now;
@@ -469,6 +565,7 @@ namespace ReplayClip
 
         public static void Request(string video, Action<string, string> done)
         {
+            if (Library.IsImage(video)) { done(video, video); return; } // Screenshot: Bild selbst ist die Vorschau
             string tp;
             try { tp = ThumbPath(video); } catch { return; }
             if (File.Exists(tp)) { done(video, tp); return; }
