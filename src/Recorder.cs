@@ -132,6 +132,7 @@ namespace ReplayClip
                 if (active) return;
                 failCount = 0;
                 recordFile = recordFinal = null;
+                retryPending = false;
                 try
                 {
                     StartInternal(s.Clone());
@@ -253,6 +254,7 @@ namespace ReplayClip
                 if (active) return;
                 failCount = 0;
                 recordPart = 1;
+                retryPending = false;
                 recordFinal = finalMp4;
                 recordFile = Path.Combine(Path.GetDirectoryName(finalMp4), "~replayclip_rec_" + Path.GetFileNameWithoutExtension(finalMp4) + ".mkv");
                 try
@@ -303,6 +305,15 @@ namespace ReplayClip
         {
             lock (sync)
             {
+                if (!active && retryPending)
+                {
+                    // Neustart stand noch aus – abbrechen; eine angefangene Aufnahme ist schon gesichert
+                    retryPending = false;
+                    bool wasRec = recordFile != null;
+                    recordFile = recordFinal = null;
+                    Raise(false, wasRec ? "Aufnahme gespeichert" : "Replay-Buffer gestoppt");
+                    return;
+                }
                 if (!active) return;
                 stopping = true;
                 string mkv = recordFile, mp4 = recordFinal;
@@ -329,9 +340,17 @@ namespace ReplayClip
             }
         }
 
+        volatile bool retryPending;
+
+        /// <summary>
+        /// FFmpeg hat sich beendet. Häufig verliert Windows kurz die Bildschirm-Erfassung (Sperrbildschirm, UAC-Abfrage,
+        /// Wechsel ins exklusive Vollbild, Auflösung/HDR geändert, Monitor aus) – dann ruhig und dauerhaft neu versuchen:
+        /// erst sofort, dann mit wachsender Pause (max. 30 s). Abbruch nur durch Stopp/Moduswechsel.
+        /// </summary>
         void MonitorLoop(Process p)
         {
             try { p.WaitForExit(); } catch { return; }
+            int delayMs;
             lock (sync)
             {
                 if (stopping || ff != p) return;
@@ -341,41 +360,54 @@ namespace ReplayClip
                 TearDown();
                 bool quickFail = (DateTime.UtcNow - lastStart).TotalSeconds < 20;
                 failCount = quickFail ? failCount + 1 : 1;
+                delayMs = failCount <= 3 ? 1500 : Math.Min(30000, 5000 * (failCount - 3));
                 if (mkv != null)
                 {
-                    // Aufnahme abgebrochen (z.B. Auflösungswechsel): Bisheriges sichern und als neuer Teil weiterlaufen
+                    // Aufnahme abgebrochen: Bisheriges sichern und als neuer Teil weiterlaufen
                     FinalizeRecording(mkv, mp4);
-                    if (failCount <= 3)
-                    {
-                        recordPart++;
-                        string baseName = Path.GetFileNameWithoutExtension(mp4);
-                        int k = baseName.IndexOf(" (Teil ");
-                        if (k > 0) baseName = baseName.Substring(0, k);
-                        recordFinal = Path.Combine(Path.GetDirectoryName(mp4), baseName + " (Teil " + recordPart + ").mp4");
-                        recordFile = Path.Combine(Path.GetDirectoryName(mp4), "~replayclip_rec_" + baseName + "_" + recordPart + ".mkv");
-                        Thread.Sleep(1500);
-                        try { StartInternal(cfg); Raise(true, "Aufnahme läuft (Teil " + recordPart + ")"); }
-                        catch (Exception ex) { TearDown(); recordFile = recordFinal = null; Raise(false, ex.Message); }
-                    }
-                    else { recordFile = recordFinal = null; Raise(false, "Aufnahme beendet – FFmpeg-Fehler:\n" + err); }
-                    return;
+                    recordPart++;
+                    string baseName = Path.GetFileNameWithoutExtension(mp4);
+                    int k = baseName.IndexOf(" (Teil ");
+                    if (k > 0) baseName = baseName.Substring(0, k);
+                    recordFinal = Path.Combine(Path.GetDirectoryName(mp4), baseName + " (Teil " + recordPart + ").mp4");
+                    recordFile = Path.Combine(Path.GetDirectoryName(mp4), "~replayclip_rec_" + baseName + "_" + recordPart + ".mkv");
                 }
-                if (failCount <= 3)
+                retryPending = true;
+                bool capture = err.IndexOf("ddagrab", StringComparison.OrdinalIgnoreCase) >= 0 || err.IndexOf("external library", StringComparison.OrdinalIgnoreCase) >= 0
+                               || err.IndexOf("filtergraph", StringComparison.OrdinalIgnoreCase) >= 0 || err.Length == 0;
+                Raise(false, (capture ? "Bildschirm-Erfassung unterbrochen" : "FFmpeg beendet") + " – starte neu in " + Math.Max(1, delayMs / 1000) + " s …"
+                             + (!capture && failCount > 3 ? "\n" + err : ""));
+            }
+            Thread.Sleep(delayMs);
+            lock (sync)
+            {
+                if (!retryPending || stopping || active) return;
+                retryPending = false;
+                try
                 {
-                    // z.B. Auflösungswechsel im Spiel -> ddagrab bricht ab -> automatisch neu starten
-                    Raise(false, "FFmpeg beendet, starte neu …" + (err.Length > 0 ? "\n" + err : ""));
-                    Thread.Sleep(1500);
-                    try
-                    {
-                        StartInternal(cfg);
-                        Raise(true, "Replay-Buffer läuft (neu gestartet)");
-                    }
-                    catch (Exception ex) { TearDown(); Raise(false, ex.Message); }
+                    StartInternal(cfg);
+                    Raise(true, recordFile != null ? "Aufnahme läuft (Teil " + recordPart + ")" : "Replay-Buffer läuft (neu gestartet)");
                 }
-                else
+                catch (Exception ex)
                 {
-                    Raise(false, "FFmpeg-Fehler:\n" + (err.Length > 0 ? err : "unbekannt"));
+                    TearDown();
+                    // nächster Versuch über einen neuen Durchlauf
+                    retryPending = true;
+                    Raise(false, ex.Message + " – starte neu …");
+                    ThreadPool.QueueUserWorkItem(_ => RetryLater());
                 }
+            }
+        }
+
+        void RetryLater()
+        {
+            Thread.Sleep(15000);
+            lock (sync)
+            {
+                if (!retryPending || stopping || active) return;
+                retryPending = false;
+                try { StartInternal(cfg); Raise(true, recordFile != null ? "Aufnahme läuft (Teil " + recordPart + ")" : "Replay-Buffer läuft (neu gestartet)"); }
+                catch (Exception ex) { TearDown(); retryPending = true; Raise(false, ex.Message + " – starte neu …"); ThreadPool.QueueUserWorkItem(_ => RetryLater()); }
             }
         }
 

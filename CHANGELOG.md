@@ -3,6 +3,9 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.4.1
+- Kein „FFmpeg-Fehler … Generic error in an external library“ mehr als Abbruch: Wenn Windows die Bildschirm-Erfassung kurz wegnimmt (Sperrbildschirm, UAC-Abfrage, exklusives Vollbild, Auflösungs-/HDR-Wechsel, Monitor aus), startet Rewind bzw. die Aufnahme jetzt still und dauerhaft neu – erst sofort, dann mit wachsender Pause (max. 30 s). Oben steht solange „Bildschirm-Erfassung unterbrochen – starte neu …“. Eine laufende Aufnahme wird gesichert und als neuer Teil fortgesetzt.
+
 ## 2.4.0
 - **Spiele & Apps = echte Ordner**: mit „+“ neuen Ordner anlegen (im Speicherort oder – falls eingerichtet – in einem weiteren Bibliotheks-Ordner). Leere Ordner erscheinen auch in der Liste.
 - **Clips verschieben wie im Explorer**: Clips aus der Ansicht links auf einen Spiel-Ordner ziehen – Datei wird verschoben, Tags und Favoriten bleiben erhalten.
