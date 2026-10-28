@@ -135,11 +135,29 @@ namespace ReplayClip
             Activated += (s, e) => { if (!scanning && Visible) Rescan(); };
         }
 
+        // UI-Aufrufe aus Hintergrund-Threads: Solange das Fenster noch kein Handle hat, meldet InvokeRequired
+        // fälschlich "false" – dann würde der Code im falschen Thread laufen (Absturz im Layout). Deshalb puffern.
+        readonly int uiThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+        readonly List<Action> pendingUi = new List<Action>();
+
         void OnUi(Action a)
         {
             if (IsDisposed) return;
-            try { if (InvokeRequired) BeginInvoke(a); else a(); }
+            try
+            {
+                if (IsHandleCreated) { if (InvokeRequired) BeginInvoke(a); else a(); return; }
+                if (System.Threading.Thread.CurrentThread.ManagedThreadId == uiThreadId) { a(); return; }
+                lock (pendingUi) pendingUi.Add(a);
+                if (IsHandleCreated) FlushPendingUi();
+            }
             catch (InvalidOperationException) { }
+        }
+
+        void FlushPendingUi()
+        {
+            Action[] q;
+            lock (pendingUi) { q = pendingUi.ToArray(); pendingUi.Clear(); }
+            foreach (var x in q) { try { BeginInvoke(x); } catch (InvalidOperationException) { } }
         }
 
         // ======================= ISettingsHost =======================
@@ -1224,6 +1242,7 @@ namespace ReplayClip
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            FlushPendingUi();
             RegisterHotkeys();
             BeginInvoke(new Action(AfterStartup));
         }

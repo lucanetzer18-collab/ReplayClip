@@ -3,6 +3,9 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.2.6
+- Absturz beim Öffnen der Einstellungen behoben („Index lag außerhalb des Bereichs“): Die Größenanzeige beim Speicherlimit wurde manchmal aus einem Hintergrund-Thread gesetzt, bevor das Fenster fertig war. Solche Aufrufe werden jetzt sicher bis zum Fensterstart zurückgehalten (auch im Hauptfenster).
+
 ## 2.2.5
 - **Speicherlimit für Clips** (Einstellungen › Bibliothek): ab X GB werden die ältesten Clips automatisch gelöscht – Favoriten und getaggte Clips auf Wunsch geschützt.
 - **Löschen direkt im Editor** – für Clips und Screenshots (in den Papierkorb).
