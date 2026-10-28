@@ -3,6 +3,15 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.1.0
+- Umschalter oben nur noch **Rewind ↔ Aufnahme**; **Screenshot** ist ein eigener Knopf daneben (geht immer, auch Alt+F12).
+- Bibliothek links: **Clips / Aufnahmen / Screenshots** direkt wählbar.
+- **Farben direkt in der Bibliothek**: Klick auf den Farbpunkt eines Tags oder Spiels = Farbe ändern (Rechtsklick geht auch).
+- **„+“ bei Tags**: neuen Tag anlegen (wird Schnell-Tag und – wenn Clips ausgewählt sind – gleich vergeben). Schnell-Tags stehen immer in der Liste.
+- **Einstellungen aufgeräumt**: Gruppen (Aufnahme / Bibliothek / Programm) und **Suchfeld**, das alle Texte aller Seiten durchsucht.
+- **Kurzanleitung beim ersten Start** (überspringbar, später unter Einstellungen › Über erneut aufrufbar).
+- Stabile Version (keine Beta mehr).
+
 ## 2.0.0
 **2.0 Beta – neues Design (Violett/Pink) und drei Modi oben in der Leiste:**
 - **Rewind**: der bekannte Replay-Puffer – läuft jetzt immer, Clip speichern mit Alt+F10. Der Knopf „Buffer starten/stoppen“ entfällt; pausieren geht unter Einstellungen › Aufnahme › Rewind (oder im Tray-Menü).

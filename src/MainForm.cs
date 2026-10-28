@@ -15,6 +15,7 @@ namespace ReplayClip
     {
         const int HK_SAVE = 1, HK_TOGGLE = 2, HK_SHOT = 3;   // HK_TOGGLE = Aufnahme starten/stoppen
         ModeSwitch modeSwitch;
+        FxButton btnShot;
         public static readonly int WM_SHOWME = SafeRegisterMessage("ReplayClip_ShowWindow_v1");
 
         static int SafeRegisterMessage(string name)
@@ -204,7 +205,9 @@ namespace ReplayClip
             btnSaveNow.Click += (s, e) => DoModeAction();
             modeSwitch = new ModeSwitch { Selected = settings.Mode };
             modeSwitch.Changed += SetMode;
-            Tips.Set(modeSwitch, "Rewind = immer die letzten Minuten (Clip speichern)  ·  Aufnahme = dauerhaft aufnehmen  ·  Screenshot");
+            Tips.Set(modeSwitch, "Rewind = immer die letzten Minuten (Clip speichern)  ·  Aufnahme = dauerhaft aufnehmen");
+            btnShot = new FxButton { Text = "Screenshot", IconName = "camera", AutoSize = true };
+            btnShot.Click += (s, e) => TakeScreenshot();
             btnToggle = new FxButton { Text = "Buffer starten", IconName = "record", Kind = FxKind.Primary, AutoSize = false, Size = new Size(Px(170), Px(40)) };
             btnToggle.Click += (s, e) => ToggleBuffer();
             btnSettings = Ui.IconButton("settings", "Einstellungen", (s, e) => OpenSettings(null));
@@ -213,9 +216,10 @@ namespace ReplayClip
             btnSettings.Margin = new Padding(Px(4), 0, 0, 0);
             header.Controls.Add(btnSaveNow);
             header.Controls.Add(modeSwitch);
+            header.Controls.Add(btnShot);
             header.Controls.Add(btnSettings);
             header.Resize += (s, e) => LayoutHeader();
-            foreach (var b in new Control[] { btnSaveNow, modeSwitch, btnSettings }) b.SizeChanged += (s, e) => LayoutHeader();
+            foreach (var b in new Control[] { btnSaveNow, modeSwitch, btnShot, btnSettings }) b.SizeChanged += (s, e) => LayoutHeader();
 
             // ---- Hinweisbalken ----
             banner = new Panel { Dock = DockStyle.Top, Height = Px(46), BackColor = Gfx.Lerp(Theme.Bg, Theme.Warning, 0.14f), Visible = false, Padding = new Padding(Px(18), Px(7), Px(12), Px(7)), Tag = "keep" };
@@ -238,11 +242,35 @@ namespace ReplayClip
             {
                 var en = nav.Items[i];
                 if (en.Kind == 5 && en.Value != "\u0001") ShowTagColorMenu(en.Value, nav, p);
+                else if (en.Kind == 4) ShowTagColorMenu("game:" + en.Value, nav, p);
+            };
+            nav.DotClicked += (i, p) =>
+            {
+                var en = nav.Items[i];
+                if (en.Kind == 5) ShowTagColorMenu(en.Value, nav, p);
+                else if (en.Kind == 4) ShowTagColorMenu("game:" + en.Value, nav, p);
+            };
+            nav.HeaderButtonClicked += (en, p) =>
+            {
+                string t = InputBox.Show(this, "Neuer Tag", "Name des Tags (wird als Schnell-Tag angelegt" + (browser.Selected.Count > 0 ? " und den ausgewählten Clips gegeben" : "") + "):", "");
+                if (string.IsNullOrEmpty(t) || t.Trim().Length == 0) return;
+                t = t.Trim();
+                if (!settings.QuickTags.Exists(x => string.Equals(x, t, StringComparison.CurrentCultureIgnoreCase))) { settings.QuickTags.Add(t); settings.Save(); BuildQuickButtons(); }
+                if (browser.Selected.Count > 0) AddTagToSelection(t);
+                RebuildNav();
             };
             nav.SelectedIndexChanged += (s, e) =>
             {
                 var it = nav.SelectedItem;
                 if (it == null) return;
+                if (it.Kind == 6)
+                {
+                    int v = int.Parse(it.Value);
+                    filterKind = 1; filterValue = "";
+                    if (v != settings.LibView) { settings.LibView = v; settings.Save(); Rescan(); }
+                    else ApplyFilter();
+                    return;
+                }
                 filterKind = it.Kind;
                 filterValue = it.Value;
                 ApplyFilter();
@@ -316,7 +344,8 @@ namespace ReplayClip
         {
             // Buttons rechtsbündig, Status-Block und Pegel dazwischen
             int x = header.Width - Px(18);
-            foreach (var b in new Control[] { btnSettings, btnSaveNow, modeSwitch })
+            btnShot.Hint = settings.ShotHotkeyKey != 0 ? HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) : null;
+            foreach (var b in new Control[] { btnSettings, btnShot, btnSaveNow, modeSwitch })
             {
                 if (b.AutoSize) b.Size = b.GetPreferredSize(Size.Empty);
                 if (b == btnSaveNow && b.Width < Px(190)) { b.AutoSize = false; b.Size = new Size(Px(190), Px(40)); }
@@ -378,21 +407,24 @@ namespace ReplayClip
             }
             var items = new List<NavEntry>();
             items.Add(new NavEntry { Header = true, Text = "Bibliothek" });
-            items.Add(new NavEntry { Kind = 1, Text = settings.Mode == 1 ? "Alle Aufnahmen" : settings.Mode == 2 ? "Alle Screenshots" : "Alle Clips", Icon = settings.Mode == 2 ? "camera" : "library", Count = all.Count });
+            string[] views = { "Clips", "Aufnahmen", "Screenshots" }, vicons = { "library", "video", "camera" };
+            for (int v = 0; v < 3; v++)
+                items.Add(new NavEntry { Kind = 6, Text = views[v], Value = v.ToString(), Icon = vicons[v], Count = v == settings.LibView ? all.Count : -1 });
             items.Add(new NavEntry { Kind = 2, Text = "Favoriten", Icon = "starfill", Count = favs });
             items.Add(new NavEntry { Kind = 3, Text = "Schnitte", Icon = "cut", Count = cuts });
             if (games.Count > 0)
             {
                 items.Add(new NavEntry { Header = true, Text = "Spiele & Apps" });
-                foreach (var kv in games) items.Add(new NavEntry { Kind = 4, Text = kv.Key, Value = kv.Key, Count = kv.Value, Dot = Theme.HashColor(kv.Key) });
+                foreach (var kv in games) items.Add(new NavEntry { Kind = 4, Text = kv.Key, Value = kv.Key, Count = kv.Value, Dot = Theme.GameColor(kv.Key) });
             }
-            items.Add(new NavEntry { Header = true, Text = "Tags" });
-            if (tags.Count == 0) items.Add(new NavEntry { Kind = 5, Text = "(noch keine Tags)", Value = "\u0001", Icon = "tag", Count = -1 });
+            items.Add(new NavEntry { Header = true, Text = "Tags", HeaderButton = "+" });
+            foreach (var q in settings.QuickTags) if (!tags.ContainsKey(q)) tags[q] = 0;   // Schnell-Tags immer zeigen (auch ohne Clips)
+            if (tags.Count == 0) items.Add(new NavEntry { Kind = 5, Text = "(noch keine Tags – „+“)", Value = "\u0001", Icon = "tag", Count = -1 });
             foreach (var kv in tags) items.Add(new NavEntry { Kind = 5, Text = kv.Key, Value = kv.Key, Count = kv.Value, Dot = Theme.TagColor(kv.Key) });
 
-            int sel = 1;
+            int sel = 1 + settings.LibView;
             for (int i = 0; i < items.Count; i++)
-                if (!items[i].Header && items[i].Kind == filterKind && (filterKind <= 3 || string.Equals(items[i].Value, filterValue, StringComparison.CurrentCultureIgnoreCase))) sel = i;
+                if (!items[i].Header && items[i].Kind == filterKind && filterKind != 1 && (filterKind <= 3 || string.Equals(items[i].Value, filterValue, StringComparison.CurrentCultureIgnoreCase))) sel = i;
             nav.SetItems(items, sel);
         }
 
@@ -403,7 +435,7 @@ namespace ReplayClip
             if (scanning) { rescanAgain = true; return; }
             scanning = true;
             string root = LibraryRoot();
-            var pats = settings.Mode == 2 ? new[] { "*.png", "*.jpg", "*.jpeg" } : new[] { "*.mp4" };
+            var pats = settings.LibView == 2 ? new[] { "*.png", "*.jpg", "*.jpeg" } : new[] { "*.mp4" };
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 List<ClipItem> items;
@@ -459,8 +491,8 @@ namespace ReplayClip
             if (filterKind == 2) browser.EmptyText = "Noch keine Favoriten.\nKlick auf den Stern eines Clips oder drück F.";
             else if (filterKind == 3) browser.EmptyText = "Noch keine Schnitte.\nDoppelklick auf einen Clip öffnet den Editor.";
             else if (q.Length > 0) browser.EmptyText = "Nichts gefunden für „" + q + "“.";
-            else if (settings.Mode == 1) browser.EmptyText = "Noch keine Aufnahmen.\nOben „Aufnahme starten“ oder " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey) + " drücken.";
-            else if (settings.Mode == 2) browser.EmptyText = "Noch keine Screenshots.\nIm Spiel " + HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) + " drücken.";
+            else if (settings.LibView == 1) browser.EmptyText = "Noch keine Aufnahmen.\nOben „Aufnahme starten“ oder " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey) + " drücken.";
+            else if (settings.LibView == 2) browser.EmptyText = "Noch keine Screenshots.\nIm Spiel " + HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) + " drücken.";
             else browser.EmptyText = "Noch keine Clips hier.\nIm Spiel " + hk + " drücken – Rewind hält immer die letzten Minuten bereit.";
             browser.SetItems(list);
             stLeft.Text = list.Count == all.Count
@@ -662,7 +694,7 @@ namespace ReplayClip
             {
                 detName.Text = all.Count == 0 ? "Willkommen bei ReplayClip" : "Kein Clip ausgewählt";
                 detInfo.Text = all.Count == 0
-                    ? "Hier erscheinen deine Clips. Starte oben den Replay-Buffer und drück im Spiel " + hk + "."
+                    ? "Hier erscheinen deine Clips, Aufnahmen und Screenshots. Im Rewind-Modus speichert " + hk + " die letzten Minuten."
                     : "Klick auf einen Clip für Details.\n\nTipps\n•  Doppelklick = schneiden\n•  1–9 = Schnell-Tag, F = Favorit\n•  Clips per Drag && Drop direkt in Discord ziehen\n•  Strg+F = Suche";
                 return;
             }
@@ -766,10 +798,10 @@ namespace ReplayClip
         void ShowTagColorMenu(string tag, Control at, Point p)
         {
             var m = new ContextMenuStrip();
-            var head = new ToolStripMenuItem("Farbe für „" + tag + "“") { Image = Swatch(Theme.TagColor(tag)), Font = Theme.Semi(9f) };
+            var head = new ToolStripMenuItem("Farbe für „" + (tag.StartsWith("game:") ? tag.Substring(5) : tag) + "“") { Image = Swatch(Theme.TagColor(tag)), Font = Theme.Semi(9f) };
             m.Items.Add(head);
             m.Items.Add(new ToolStripSeparator());
-            int cur = Theme.TagColor(tag).ToArgb();
+            int cur = (tag.StartsWith("game:") ? Theme.GameColor(tag.Substring(5)) : Theme.TagColor(tag)).ToArgb();
             var palette = new List<KeyValuePair<string, Color>>(Theme.Presets);
             for (int i = 0; i < 10; i++)
             {
@@ -1147,6 +1179,7 @@ namespace ReplayClip
             Gamepad.SetCombo(settings.ControllerCombo);
             Rescan();
             Updater.CleanupOld();
+            if (!settings.OnboardingDone && !startHidden) BeginInvoke(new Action(ShowIntro));
             if (Program.JustUpdated)
                 Toast.Show(this, "Aktualisiert", "ReplayClip " + Program.Version + " läuft jetzt.", "check", Theme.Accent);
             // Update-Suche: kurz nach dem Start und danach alle 6 Stunden
@@ -1309,7 +1342,7 @@ namespace ReplayClip
 
         string LibraryRoot()
         {
-            return settings.Mode == 1 ? settings.RecordDir : settings.Mode == 2 ? settings.ShotDir : settings.SaveDir;
+            return settings.LibView == 1 ? settings.RecordDir : settings.LibView == 2 ? settings.ShotDir : settings.SaveDir;
         }
 
         void SetMode(int m)
@@ -1321,6 +1354,7 @@ namespace ReplayClip
                 return;
             }
             settings.Mode = m;
+            settings.LibView = m;      // Bibliothek zeigt passend Clips bzw. Aufnahmen
             settings.Save();
             modeSwitch.Selected = m;
             filterKind = 1; filterValue = "";
@@ -1339,10 +1373,16 @@ namespace ReplayClip
             else if (!recorder.IsActive && wantRewind && !starting) StartBuffer();
         }
 
+        public void ShowIntro()
+        {
+            using (var f = new OnboardingForm(settings)) f.ShowDialog(Form.ActiveForm ?? this);
+            settings.OnboardingDone = true;
+            settings.Save();
+        }
+
         void DoModeAction()
         {
             if (settings.Mode == 1) ToggleRecording();
-            else if (settings.Mode == 2) TakeScreenshot();
             else recorder.SaveClip();
         }
 
@@ -1355,13 +1395,13 @@ namespace ReplayClip
             if (Ffmpeg.Find(settings) == null) { OpenSettings("Speicher & FFmpeg"); return; }
             if (settings.Mode != 1)
             {
-                settings.Mode = 1; settings.Save(); modeSwitch.Selected = 1;
+                settings.Mode = 1; settings.LibView = 1; settings.Save(); modeSwitch.Selected = 1;
                 filterKind = 1; filterValue = ""; Rescan();
             }
             long free = FreeBytes(settings.RecordDir);
             if (free >= 0 && free < settings.RecordMinFreeGB * 1073741824L)
             {
-                ShowBanner("Zu wenig Speicherplatz für die Aufnahme (" + ClipBrowser.FmtSize(free) + " frei, mindestens " + settings.RecordMinFreeGB + " GB eingestellt).", "Einstellungen", () => OpenSettings("Aufnahme-Modus"));
+                ShowBanner("Zu wenig Speicherplatz für die Aufnahme (" + ClipBrowser.FmtSize(free) + " frei, mindestens " + settings.RecordMinFreeGB + " GB eingestellt).", "Einstellungen", () => OpenSettings("Dauer-Aufnahme"));
                 return;
             }
             string app = Native.ForegroundAppName();
@@ -1393,8 +1433,8 @@ namespace ReplayClip
             Library.SaveSoon();
             SoundFx.PlaySaved(settings);
             Toast.Show(this, "Aufnahme gespeichert", Path.GetFileName(file) + "\nKlicken zum Anzeigen", "check", Theme.Accent, null,
-                () => { ShowFromTray(); if (settings.Mode != 1) SetMode(1); selectAfterScan = file; Rescan(); });
-            if (settings.Mode == 1) { selectAfterScan = file; Rescan(); }
+                () => { ShowFromTray(); settings.LibView = 1; filterKind = 1; selectAfterScan = file; Rescan(); });
+            if (settings.LibView == 1) { selectAfterScan = file; Rescan(); }
         }
 
         /// <summary>Screenshot vom Aufnahme-Monitor: speichern (Ordner nach Einstellung), optional in die Zwischenablage.</summary>
@@ -1441,7 +1481,7 @@ namespace ReplayClip
                         OverlayToast.ShowMessage("Screenshot gespeichert", app + (settings.ShotCopy ? "  ·  in der Zwischenablage" : ""), Theme.Accent, CaptureScreen(), settings.OverlayPos);
                     Toast.Show(this, "Screenshot gespeichert", app + (settings.ShotCopy ? " · auch in der Zwischenablage" : "") + "\nKlicken zum Bearbeiten", "camera", Theme.Accent, thumb,
                         () => { ShowFromTray(); OpenEditor(file); });
-                    if (settings.Mode == 2) { selectAfterScan = file; Rescan(); }
+                    if (settings.LibView == 2) { selectAfterScan = file; Rescan(); }
                 });
             });
         }
@@ -1782,7 +1822,7 @@ namespace ReplayClip
                 header.StatusLine = settings.Mode == 1 ? "Bereit zur Aufnahme" : settings.RewindPaused ? "Rewind pausiert" : "Bereit";
                 header.SubLine = statusMsg.Length > 0 && statusMsg.Length < 90 && statusMsg != "Aufnahme gespeichert" ? statusMsg
                     : settings.Mode == 1 ? "Start mit „Aufnahme starten“ oder " + HotkeyBox.Format(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey)
-                    : settings.RewindPaused ? "Fortsetzen: Einstellungen › Aufnahme › Rewind" : "Rewind ist aus";
+                    : settings.RewindPaused ? "Fortsetzen: Einstellungen › Video & Rewind" : "Rewind ist aus";
                 header.BufferFill = 0;
             }
             header.Invalidate();

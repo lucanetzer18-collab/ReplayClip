@@ -82,7 +82,9 @@ namespace ReplayClip
         public int SettingsVersion = 2;
 
         // ---- Modi (2.0) ----
-        public int Mode = 0;                   // 0 = Rewind (Replay-Puffer), 1 = Aufnahme (dauerhaft), 2 = Screenshot
+        public int Mode = 0;                   // 0 = Rewind (Replay-Puffer), 1 = Aufnahme (dauerhaft)
+        public int LibView = 0;                // Bibliothek zeigt: 0 = Clips, 1 = Aufnahmen, 2 = Screenshots
+        public bool OnboardingDone = false;    // Kurzanleitung beim ersten Start gezeigt
         public bool RewindPaused = false;      // Rewind-Puffer pausiert (Einstellungen)
         public string RecordDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ReplayClip Aufnahmen");
         public int RecordStructure = 1;        // siehe Library.StructureNames
@@ -193,6 +195,8 @@ namespace ReplayClip
             w("StartBufferOnLaunch", StartBufferOnLaunch);
             w("SettingsVersion", SettingsVersion);
             w("Mode", Mode);
+            w("LibView", LibView);
+            w("OnboardingDone", OnboardingDone);
             w("RewindPaused", RewindPaused);
             w("RecordDir", RecordDir);
             w("RecordStructure", RecordStructure);
@@ -354,6 +358,9 @@ namespace ReplayClip
                 s.Tracks.Add(t);
             }
             s.Mode = Math.Max(0, Math.Min(2, GetInt(d, "Mode", 0)));
+            s.LibView = Math.Max(0, Math.Min(2, GetInt(d, "LibView", s.Mode)));
+            if (s.Mode == 2) s.Mode = 0;           // 2.0-Screenshot-Modus gibt es nicht mehr (Screenshot ist ein eigener Knopf)
+            s.OnboardingDone = GetBool(d, "OnboardingDone", false);
             s.RewindPaused = GetBool(d, "RewindPaused", false);
             s.RecordDir = GetStr(d, "RecordDir", s.RecordDir);
             s.RecordStructure = Math.Max(0, Math.Min(4, GetInt(d, "RecordStructure", 1)));

@@ -79,6 +79,14 @@ namespace ReplayClip
             return HashColor(tag);
         }
 
+        /// <summary>Farbe eines Spiels/Ordners: selbst gewählt oder automatisch.</summary>
+        public static Color GameColor(string game)
+        {
+            int argb;
+            if (game != null && tagColors.TryGetValue("game:" + game, out argb)) return Color.FromArgb(255, Color.FromArgb(argb));
+            return HashColor(game);
+        }
+
         public static void Configure(Settings s)
         {
             tagColors = new Dictionary<string, int>(s.TagColors, StringComparer.CurrentCultureIgnoreCase);

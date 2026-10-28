@@ -1413,6 +1413,8 @@ namespace ReplayClip
         public int Kind;
         public int Count = -1;
         public Color? Dot;
+        /// <summary>Kleiner "+"-Knopf rechts in einer Überschrift (z.B. Tag hinzufügen).</summary>
+        public string HeaderButton;
     }
 
     /// <summary>Seitenleiste mit gleitender Auswahl-Markierung und Hover-Effekt.</summary>
@@ -1506,12 +1508,25 @@ namespace ReplayClip
 
         /// <summary>Rechtsklick auf einen Eintrag (Index, Position).</summary>
         public event Action<int, Point> ItemRightClicked;
+        /// <summary>Klick auf den Farbpunkt eines Eintrags (Farbe ändern).</summary>
+        public event Action<int, Point> DotClicked;
+        /// <summary>Klick auf den Knopf einer Überschrift.</summary>
+        public event Action<NavEntry, Point> HeaderButtonClicked;
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
+            float yy = e.Y + scroll;
+            for (int i = 0; i < Items.Count; i++)
+            {
+                var it = Items[i];
+                if (!it.Header || it.HeaderButton == null) continue;
+                float a = Y(i);
+                if (yy >= a && yy < a + H(it) && e.X > Width - Theme.S(44)) { var hb = HeaderButtonClicked; if (hb != null) hb(it, e.Location); return; }
+            }
             int n = At(e.Location);
             if (n < 0) return;
+            if (e.Button == MouseButtons.Left && Items[n].Dot.HasValue && e.X < Theme.S(46) && DotClicked != null) { DotClicked(n, e.Location); return; }
             if (e.Button == MouseButtons.Right) { var h = ItemRightClicked; if (h != null) h(n, e.Location); return; }
             SelectedIndex = n;
         }
@@ -1559,6 +1574,12 @@ namespace ReplayClip
                 if (it.Header)
                 {
                     TextRenderer.DrawText(g, (it.Text ?? "").ToUpperInvariant(), small, new Rectangle(Theme.S(20), (int)y + Theme.S(10), Width - Theme.S(28), (int)h - Theme.S(10)), Theme.TextDim, Gfx.Left);
+                    if (it.HeaderButton != null)
+                    {
+                        var br = new RectangleF(Width - Theme.S(38), y + Theme.S(8), Theme.S(24), Theme.S(22));
+                        Gfx.FillRound(g, Gfx.Lerp(BackColor, Theme.Accent, 0.22f), br, Theme.S(6));
+                        TextRenderer.DrawText(g, it.HeaderButton, Theme.Semi(10f), Rectangle.Round(br), Theme.Accent, Gfx.Center);
+                    }
                     continue;
                 }
                 bool s = i == sel;
@@ -1574,6 +1595,8 @@ namespace ReplayClip
                 {
                     float dd = Theme.S(8);
                     using (var b = new SolidBrush(it.Dot.Value)) g.FillEllipse(b, x + Theme.S(4), y + h / 2 - dd / 2, dd, dd);
+                    if (i == hot && DotClicked != null)
+                        using (var p = new Pen(Gfx.Alpha(it.Dot.Value, 160), 1.5f * Theme.Dpi)) g.DrawEllipse(p, x + Theme.S(1), y + h / 2 - dd / 2 - Theme.S(3), dd + Theme.S(6), dd + Theme.S(6));
                     x += Theme.S(24);
                 }
                 int countW = 0;
@@ -2017,8 +2040,8 @@ namespace ReplayClip
     /// <summary>Umschalter für die drei Modi (Rewind / Aufnahme / Screenshot) in der Kopfleiste – mit gleitender Markierung.</summary>
     public sealed class ModeSwitch : Control, IFxControl
     {
-        public string[] Items = { "Rewind", "Aufnahme", "Screenshot" };
-        public string[] Icons = { "record", "video", "camera" };
+        public string[] Items = { "Rewind", "Aufnahme" };
+        public string[] Icons = { "record", "video" };
         int sel, hot = -1;
         readonly Tween pos;
         public event Action<int> Changed;
@@ -2028,7 +2051,7 @@ namespace ReplayClip
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
             pos = new Tween(this, 0, 14);
             pos.Changed = Invalidate;
-            Size = new Size(Theme.S(360), Theme.S(40));
+            Size = new Size(Theme.S(250), Theme.S(40));
             Cursor = Cursors.Hand;
         }
 

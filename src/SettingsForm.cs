@@ -26,6 +26,7 @@ namespace ReplayClip
         void RestartApp();
         void OfferUpdate(UpdateInfo u, bool fromSettings);
         UpdateInfo PendingUpdate { get; }
+        void ShowIntro();
     }
 
     public static class Shell
@@ -179,8 +180,19 @@ namespace ReplayClip
             DoubleBuffered = true;
             Theme.DarkTitleBar(this);
 
-            nav = new NavList { Dock = DockStyle.Left, Width = Px(230), ItemHeight = 40 };
-            nav.SelectedIndexChanged += (o, e) => ShowPage(nav.SelectedIndex - 1);
+            nav = new NavList { Dock = DockStyle.Fill, ItemHeight = 38 };
+            nav.SelectedIndexChanged += (o, e) => { var it = nav.SelectedItem; if (it != null && it.Value != null) ShowPage(int.Parse(it.Value)); };
+            // Suche über alle Einstellungen (Seitennamen und alle Texte auf den Seiten)
+            var navPanel = new Panel { Dock = DockStyle.Left, Width = Px(240), BackColor = Theme.Panel, Tag = "keep" };
+            txtFind = new TextBox();
+            var find = Ui.Field(txtFind, Px(208), "Einstellung suchen …", "search");
+            var findWrap = new Panel { Dock = DockStyle.Top, Height = Px(54), Padding = new Padding(Px(14), Px(12), Px(14), 0), BackColor = Theme.Panel, Tag = "keep" };
+            find.Dock = DockStyle.Fill;
+            findWrap.Controls.Add(find);
+            navPanel.Controls.Add(nav);
+            navPanel.Controls.Add(findWrap);
+            txtFind.TextChanged += (o, e) => BuildNav(txtFind.Text);
+            txtFind.KeyDown += (o, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; foreach (var it in nav.Items) if (!it.Header) { nav.SelectedIndex = nav.Items.IndexOf(it); break; } } };
             var navLine = new Panel { Dock = DockStyle.Left, Width = 1, BackColor = Theme.Border, Tag = "keep" };
 
             var right = new Panel { Dock = DockStyle.Fill, Padding = new Padding(Px(28), Px(18), Px(22), Px(10)), BackColor = Theme.Bg };
@@ -197,15 +209,16 @@ namespace ReplayClip
             right.Controls.Add(pageTitle);
             Controls.Add(right);
             Controls.Add(navLine);
-            Controls.Add(nav);
+            Controls.Add(navPanel);
 
-            AddPage("Aufnahme", "video", "Bildschirm, Qualität und Pufferlänge", BuildRecordPage());
-            pageAudio = AddPage("Audiospuren", "tracks", "Welcher Ton auf welcher Spur landet – mit Live-Pegel zum Testen", BuildAudioPage());
-            AddPage("Tastenkürzel", "keyboard", "Globale Tasten, die auch im Spiel funktionieren", BuildHotkeyPage());
-            AddPage("Aufnahme-Modus", "record", "Dauerhafte Aufnahmen – z.B. für Turniere", BuildRecordModePage());
+            // Reihenfolge = Gruppen in der Navigation (siehe BuildNav)
+            AddPage("Video & Rewind", "video", "Monitor, Bildrate, Encoder, Qualität und Rewind-Puffer", BuildRecordPage());
+            AddPage("Dauer-Aufnahme", "record", "Dauerhafte Aufnahmen – z.B. für Turniere", BuildRecordModePage());
             AddPage("Screenshots", "camera", "Speicherort, Ordner und Format", BuildShotPage());
-            AddPage("Bibliothek", "library", "Speicherort, Ordnerstruktur und Verhalten beim Schneiden", BuildLibraryPage());
-            AddPage("Schnell-Tags", "tag", "Tags auf den Tasten 1–9", BuildQuickTagPage());
+            pageAudio = AddPage("Audiospuren", "tracks", "Welcher Ton auf welcher Spur landet – mit Live-Pegel zum Testen", BuildAudioPage());
+            AddPage("Tastenkürzel", "keyboard", "Globale Tasten und Controller – funktionieren auch im Spiel", BuildHotkeyPage());
+            AddPage("Bibliothek", "library", "Speicherort, Ordnerstruktur, Vorschau, Discord und Schnitte", BuildLibraryPage());
+            AddPage("Tags", "tag", "Schnell-Tags auf den Tasten 1–9", BuildQuickTagPage());
             AddPage("Aussehen", "color", "Farben, Schrift und Animationen", BuildLookPage());
             AddPage("Sound & Hinweise", "bell", "Was passiert, wenn ein Clip gespeichert wurde", BuildSoundPage());
             AddPage("Speicher & FFmpeg", "storage", "Puffer-Ordner und Encoder", BuildSystemPage());
@@ -213,8 +226,6 @@ namespace ReplayClip
             AddPage("Updates", "refresh", "Neue Versionen suchen und installieren", BuildUpdatesPage());
             AddPage("Über", "info", "Version und Diagnose", BuildAboutPage());
 
-            var navItems = new List<NavEntry> { new NavEntry { Header = true, Text = "Einstellungen" } };
-            foreach (var pi in pageInfo) navItems.Add(new NavEntry { Text = pi[0], Icon = pi[1] });
 
             LoadSettingsIntoUi();
             loading = false;
@@ -222,15 +233,64 @@ namespace ReplayClip
             ResumeLayout(false);
             PerformLayout();
 
-            int start = 0;
-            for (int i = 0; i < pageInfo.Count; i++) if (pageInfo[i][0] == startPage) start = i;
-            nav.SetItems(navItems, -1);
-            Shown += (o, e) => nav.SelectedIndex = start + 1;
+            // Suchtext je Seite: Titel, Untertitel und alle Beschriftungen
+            for (int i = 0; i < pages.Count; i++)
+            {
+                var sb = new System.Text.StringBuilder(pageInfo[i][0] + " " + pageInfo[i][2] + " ");
+                CollectText(pages[i], sb);
+                pageText.Add(sb.ToString().ToLowerInvariant());
+            }
+            BuildNav("");
+            Shown += (o, e) => ShowPageByName(startPage ?? pageInfo[0][0]);
+        }
+
+        TextBox txtFind;
+        readonly List<string> pageText = new List<string>();
+        static readonly string[][] Groups =
+        {
+            new[] { "Aufnahme", "Video & Rewind", "Dauer-Aufnahme", "Screenshots", "Audiospuren", "Tastenkürzel" },
+            new[] { "Bibliothek", "Bibliothek", "Tags" },
+            new[] { "Programm", "Aussehen", "Sound & Hinweise", "Speicher & FFmpeg", "Allgemein", "Updates", "Über" },
+        };
+
+        static void CollectText(Control c, System.Text.StringBuilder sb)
+        {
+            if (!(c is TextBox) && !string.IsNullOrEmpty(c.Text)) sb.Append(c.Text).Append(' ');
+            var cb = c as FxCombo;
+            if (cb != null) foreach (var o in cb.Items) sb.Append(o).Append(' ');
+            foreach (Control k in c.Controls) CollectText(k, sb);
+        }
+
+        /// <summary>Navigation in Gruppen aufbauen – mit Suchtext nur passende Seiten.</summary>
+        void BuildNav(string query)
+        {
+            string q = (query ?? "").Trim().ToLowerInvariant();
+            var items = new List<NavEntry>();
+            foreach (var grp in Groups)
+            {
+                bool head = false;
+                for (int k = 1; k < grp.Length; k++)
+                {
+                    int i = pageInfo.FindIndex(p => p[0] == grp[k]);
+                    if (i < 0) continue;
+                    if (q.Length > 0 && pageText[i].IndexOf(q, StringComparison.Ordinal) < 0) continue;
+                    if (!head) { items.Add(new NavEntry { Header = true, Text = grp[0] }); head = true; }
+                    items.Add(new NavEntry { Text = pageInfo[i][0], Icon = pageInfo[i][1], Value = i.ToString() });
+                }
+            }
+            if (items.Count == 0) items.Add(new NavEntry { Header = true, Text = "Nichts gefunden" });
+            int sel = -1;
+            if (current != null)
+                for (int j = 0; j < items.Count; j++) if (items[j].Value != null && pages[int.Parse(items[j].Value)] == current) sel = j;
+            nav.SetItems(items, sel);
         }
 
         void ShowPageByName(string name)
         {
-            for (int i = 0; i < pageInfo.Count; i++) if (pageInfo[i][0] == name) nav.SelectedIndex = i + 1;
+            if (txtFind != null && txtFind.Text.Length > 0) txtFind.Text = "";
+            for (int j = 0; j < nav.Items.Count; j++)
+                if (nav.Items[j].Value != null && pageInfo[int.Parse(nav.Items[j].Value)][0] == name) { nav.SelectedIndex = j; return; }
+            ShowPage(0);
         }
 
         Panel AddPage(string name, string icon, string sub, Panel p)
@@ -310,7 +370,7 @@ namespace ReplayClip
             var buf = Ui.Grid();
             numMinutes = new FxNumber { Minimum = 1, Maximum = 20, Width = Px(130) };
             Ui.Row(buf, "Pufferlänge", Ui.Flow(numMinutes, new Label { Text = "Minuten", AutoSize = true, Margin = new Padding(Px(8), Px(8), 0, 0), ForeColor = Theme.TextDim }));
-            var chkPause = new FxToggle { Text = "Rewind pausieren (Puffer läuft im Rewind- und Screenshot-Modus sonst immer)", Checked = settings.RewindPaused, MaximumSize = new Size(Px(560), 0) };
+            var chkPause = new FxToggle { Text = "Rewind pausieren (sonst läuft der Puffer im Rewind-Modus immer)", Checked = settings.RewindPaused, MaximumSize = new Size(Px(560), 0) };
             Ui.Row(buf, "", chkPause);
             chkPause.CheckedChanged += (s, e) => { settings.RewindPaused = chkPause.Checked; settings.Save(); };
             chkReset = new FxToggle { Text = "Puffer nach dem Speichern leeren", MaximumSize = new Size(Px(560), 0) };
@@ -925,6 +985,7 @@ namespace ReplayClip
             Ui.Row(g, "Einstellungen", Ui.Flow(new Label { Text = Settings.AppDataDir, AutoSize = true, Margin = new Padding(0, Px(8), Px(8), 0) },
                 Ui.IconButton("open", "Ordner öffnen", (s, e) => Shell.OpenFolder(Settings.AppDataDir))));
             Ui.Row(g, "Diagnose", Ui.Button("copy", "Diagnose in Zwischenablage kopieren", (s, e) => CopyDiagnostics()));
+            Ui.Row(g, "Einführung", Ui.Button("info", "Kurzanleitung nochmal zeigen", (s, e) => host.ShowIntro()));
             Ui.Row(g, "GitHub", Ui.Button("open", "Projektseite öffnen", (s, e) =>
             {
                 if (Updater.RepoValid(settings.UpdateRepo)) Shell.OpenFile("https://github.com/" + settings.UpdateRepo);

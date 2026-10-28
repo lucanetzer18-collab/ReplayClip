@@ -885,7 +885,7 @@ namespace ReplayClip
             int y = tr.Bottom + S(9);
             TextRenderer.DrawText(g, it.Name, bold, new Rectangle(x, y, w, S(20)), Theme.Text, Gfx.Left);
             y += S(22);
-            var gc = Theme.HashColor(it.Game);
+            var gc = Theme.GameColor(it.Game);
             using (var b = new SolidBrush(gc)) g.FillEllipse(b, x, y + S(5), S(7), S(7));
             string info = it.Game + "  ·  " + it.Date.ToString("dd.MM.yy HH:mm", CultureInfo.CurrentCulture) + "  ·  " + FmtSize(it.Size);
             TextRenderer.DrawText(g, info, small, new Rectangle(x + S(13), y, w - S(13), S(18)), Theme.TextDim, Gfx.Left);
@@ -969,7 +969,7 @@ namespace ReplayClip
                 nx += (int)br.Width + S(8);
             }
             TextRenderer.DrawText(g, it.Name, bold, new Rectangle(nx, r.Y, xs[1] - nx - S(4), r.Height), Theme.Text, flags);
-            var gc = Theme.HashColor(it.Game);
+            var gc = Theme.GameColor(it.Game);
             using (var b = new SolidBrush(gc)) g.FillEllipse(b, xs[1] + S(8), r.Y + r.Height / 2 - S(3), S(7), S(7));
             TextRenderer.DrawText(g, it.Game, Font, new Rectangle(xs[1] + S(20), r.Y, xs[2] - xs[1] - S(22), r.Height), Theme.TextDim, flags);
             TextRenderer.DrawText(g, it.Date.ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture), Font, new Rectangle(xs[2] + S(8), r.Y, xs[3] - xs[2] - S(10), r.Height), Theme.TextDim, flags);
