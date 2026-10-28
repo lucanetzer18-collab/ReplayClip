@@ -3,6 +3,12 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.2.5
+- **Speicherlimit für Clips** (Einstellungen › Bibliothek): ab X GB werden die ältesten Clips automatisch gelöscht – Favoriten und getaggte Clips auf Wunsch geschützt.
+- **Löschen direkt im Editor** – für Clips und Screenshots (in den Papierkorb).
+- **Tastenkürzel entfernen**: Esc/Entf im Feld oder neuer ✕-Knopf daneben.
+- Hinweis-Leiste (z.B. „Tastenkürzel bereits belegt“) lässt sich mit ✕ wegklicken.
+
 ## 2.2.0
 - **Sounds für jedes Ereignis**: Clip gespeichert, Hotkey gedrückt, Screenshot, Aufnahme startet, Aufnahme gespeichert – jeweils aus der Liste oder eigene Datei (Einstellungen › Sound & Hinweise).
 - **9 neue Sounds**: Erfolg, Glitzer, Level-Up, Blip, Wassertropfen, Whoosh, Laser, Kamera (mechanisch), Tiefer Ton.

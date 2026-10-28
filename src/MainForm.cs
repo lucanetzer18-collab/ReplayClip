@@ -161,6 +161,7 @@ namespace ReplayClip
 
         public void LibraryChanged()
         {
+            EnforceClipLimit();
             browser.HoverPreview = settings.HoverPreview;
             BuildQuickButtons();
             Rescan();
@@ -230,9 +231,16 @@ namespace ReplayClip
             banner = new Panel { Dock = DockStyle.Top, Height = Px(46), BackColor = Gfx.Lerp(Theme.Bg, Theme.Warning, 0.14f), Visible = false, Padding = new Padding(Px(18), Px(7), Px(12), Px(7)), Tag = "keep" };
             bannerText = new Label { AutoSize = false, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Gfx.Light(Theme.Warning, 0.4f), Font = Theme.Medium(9f), Tag = "keep" };
             bannerButton = new FxButton { Dock = DockStyle.Right, AutoSize = true, Kind = FxKind.Normal };
+            // Hinweis wegklicken
+            var bannerClose = Ui.IconButton("delete", "Hinweis schließen", (s, e) => HideBanner());
+            bannerClose.Dock = DockStyle.Right;
+            bannerClose.Size = new Size(Px(34), Px(32));
+            bannerClose.Margin = new Padding(Px(6), 0, 0, 0);
             bannerButton.Click += (s, e) => { var a = bannerAction; HideBanner(); if (a != null) a(); };
             banner.Controls.Add(bannerText);
             banner.Controls.Add(bannerButton);
+            banner.Controls.Add(new Panel { Dock = DockStyle.Right, Width = Px(6), Tag = "keep" });
+            banner.Controls.Add(bannerClose);
 
             // ---- Statuszeile ----
             var status = new Panel { Dock = DockStyle.Bottom, Height = Px(28), BackColor = Theme.Panel, Padding = new Padding(Px(16), 0, Px(16), 0), Tag = "keep" };
@@ -980,6 +988,24 @@ namespace ReplayClip
             Rescan();
         }
 
+        /// <summary>Aus einem Editor gelöscht: Datei in den Papierkorb (kurz warten, bis der Editor sie freigegeben hat).</summary>
+        void DeleteFromEditor(string path)
+        {
+            thumbs.Invalidate(path);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                bool ok = false;
+                for (int i = 0; i < 15 && !ok; i++) { ok = RecycleFile(path) || !File.Exists(path); if (!ok) Thread.Sleep(300); }
+                OnUi(() =>
+                {
+                    if (!ok) { ShowBanner("Konnte " + Path.GetFileName(path) + " nicht löschen (noch in Benutzung?).", null, null); return; }
+                    Library.Remove(path);
+                    Rescan();
+                    Toast.Show(this, "Gelöscht", Path.GetFileName(path) + " liegt im Papierkorb.", "delete", Theme.Danger);
+                });
+            });
+        }
+
         static bool RecycleFile(string path)
         {
             try
@@ -1086,6 +1112,7 @@ namespace ReplayClip
                 if (!File.Exists(path)) { Rescan(); return; }
                 var ie = new ImageEditorForm(path) { Icon = Icon };
                 ie.Saved += f => { selectAfterScan = f; Rescan(); };
+                ie.DeleteRequested += DeleteFromEditor;
                 ie.Show(this);
                 return;
             }
@@ -1094,6 +1121,7 @@ namespace ReplayClip
             if (!File.Exists(path)) { Rescan(); return; }
             var ed = new EditorForm(ff, path) { Icon = Icon };
             ed.Exported += (target, overwrite) => OnExported(ed, path, target, overwrite);
+            ed.DeleteRequested += DeleteFromEditor;
             ed.ExportStarted += (src, target, overwrite) => OnExportStarted(src, target, overwrite);
             ed.ExportProgress += (target, pct) => browser.SetRendering(RenderKey(target), pct);
             ed.ExportFailed += (target, err) => { EndRendering(target); Toast.Show(this, "Schnitt fehlgeschlagen", err, "warning", Theme.Danger); };
@@ -1211,6 +1239,7 @@ namespace ReplayClip
             Gamepad.SetCombo(settings.ControllerCombo);
             Rescan();
             Updater.CleanupOld();
+            EnforceClipLimit();
             if (!settings.OnboardingDone && !startHidden) BeginInvoke(new Action(ShowIntro));
             if (Program.JustUpdated)
                 Toast.Show(this, "Aktualisiert", "ReplayClip " + Program.Version + " läuft jetzt.", "check", Theme.Accent);
@@ -1688,9 +1717,31 @@ namespace ReplayClip
             return Screen.PrimaryScreen.Bounds;
         }
 
+        /// <summary>Speicherlimit für Clips durchsetzen (im Hintergrund).</summary>
+        void EnforceClipLimit()
+        {
+            if (settings.ClipLimitGB <= 0) return;
+            string root = settings.SaveDir;
+            long limit = settings.ClipLimitGB * 1073741824L;
+            bool protect = settings.ClipLimitProtect;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                KeyValuePair<int, long> r;
+                try { r = Library.EnforceLimit(root, limit, protect); } catch { return; }
+                if (r.Key == 0) return;
+                OnUi(() =>
+                {
+                    Library.SaveSoon();
+                    Toast.Show(this, "Speicherlimit", r.Key + " alte Clip(s) gelöscht (" + ClipBrowser.FmtSize(r.Value) + "), Limit " + settings.ClipLimitGB + " GB.", "storage", Theme.Secondary);
+                    if (settings.LibView == 0) Rescan();
+                });
+            });
+        }
+
         void OnClipSaved(string file)
         {
             lastClip = file;
+            EnforceClipLimit();
             statusMsg = "";
             string game = Path.GetFileName(Path.GetDirectoryName(file));
             var meta = Library.Find(file);

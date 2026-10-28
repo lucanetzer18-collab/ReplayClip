@@ -404,9 +404,9 @@ namespace ReplayClip
             hkSave = new HotkeyBox();
             hkToggle = new HotkeyBox();
             hkShot = new HotkeyBox();
-            Ui.Row(keys, "Clip speichern", Ui.Field(hkSave, Px(230), null, "save"));
-            Ui.Row(keys, "Aufnahme an/aus", Ui.Field(hkToggle, Px(230), null, "record"));
-            Ui.Row(keys, "Screenshot", Ui.Field(hkShot, Px(230), null, "camera"));
+            Ui.Row(keys, "Clip speichern", Ui.Flow(Ui.Field(hkSave, Px(230), null, "save"), Ui.IconButton("delete", "Kürzel entfernen (Esc)", (s2, e2) => { hkSave.ClearHotkey(); host.RegisterHotkeys(); lblHotkeyWarn.Text = host.HotkeyWarning ?? ""; })));
+            Ui.Row(keys, "Aufnahme an/aus", Ui.Flow(Ui.Field(hkToggle, Px(230), null, "record"), Ui.IconButton("delete", "Kürzel entfernen (Esc)", (s2, e2) => { hkToggle.ClearHotkey(); host.RegisterHotkeys(); lblHotkeyWarn.Text = host.HotkeyWarning ?? ""; })));
+            Ui.Row(keys, "Screenshot", Ui.Flow(Ui.Field(hkShot, Px(230), null, "camera"), Ui.IconButton("delete", "Kürzel entfernen (Esc)", (s2, e2) => { hkShot.ClearHotkey(); host.RegisterHotkeys(); lblHotkeyWarn.Text = host.HotkeyWarning ?? ""; })));
             hkShot.Enter += (s, e) => host.UnregisterHotkeys();
             hkShot.Leave += (s, e) => { host.RegisterHotkeys(); lblHotkeyWarn.Text = host.HotkeyWarning ?? ""; };
             hkShot.HotkeyChanged += (s, e) => { settings.ShotHotkeyMods = hkShot.Mods; settings.ShotHotkeyKey = hkShot.Key; settings.Save(); };
@@ -420,7 +420,7 @@ namespace ReplayClip
                 settings.Save();
                 Gamepad.SetCombo(settings.ControllerCombo);
             };
-            Ui.Row(keys, null, Dim("Ins Feld klicken und die gewünschte Kombination drücken. Entf = kein Tastenkürzel.", 560));
+            Ui.Row(keys, null, Dim("Ins Feld klicken und die gewünschte Kombination drücken. Esc oder Entf (oder ✕) = kein Tastenkürzel.", 560));
             lblHotkeyWarn = new Label { AutoSize = true, ForeColor = Theme.Danger, MaximumSize = new Size(Px(560), 0), Tag = "keep" };
             Ui.Row(keys, null, lblHotkeyWarn);
 
@@ -573,6 +573,23 @@ namespace ReplayClip
                           "\nGilt für neue Clips. Die Bibliothek findet Clips in allen Unterordnern.";
             };
             cmbStructure.SelectedIndexChanged += (s, e) => { if (!loading) { settings.FolderStructure = cmbStructure.SelectedIndex; settings.Save(); } updEx(); };
+            // Speicherlimit für Clips
+            var numLimit = new FxNumber { Minimum = 0, Maximum = 100000, Width = Px(120), Value = settings.ClipLimitGB };
+            var lblLimit = new Label { AutoSize = true, ForeColor = Theme.TextDim, Margin = new Padding(Px(10), Px(8), 0, 0), Tag = "keep", Text = "GB  (0 = kein Limit)" };
+            Ui.Row(g, "Speicherlimit", Ui.Flow(numLimit, lblLimit));
+            var chkProtect = new FxToggle { Text = "Favoriten und Clips mit Tags nie automatisch löschen", Checked = settings.ClipLimitProtect };
+            Ui.Row(g, "", chkProtect);
+            Ui.Row(g, null, Dim("Wird das Limit überschritten, löscht ReplayClip die ältesten Clips (endgültig, nicht Papierkorb), bis wieder genug Platz ist. Gilt nur für Rewind-Clips im Speicherort oben.", 600));
+            numLimit.ValueChanged += (s, e) => { settings.ClipLimitGB = (int)numLimit.Value; settings.Save(); };
+            chkProtect.CheckedChanged += (s, e) => { settings.ClipLimitProtect = chkProtect.Checked; settings.Save(); };
+            string sizeRoot = settings.SaveDir;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                long tot = 0;
+                try { foreach (var it in Library.Scan(sizeRoot)) tot += it.Size; } catch { }
+                OnUi(() => lblLimit.Text = "GB  (0 = kein Limit)  ·  aktuell " + ClipBrowser.FmtSize(tot) + " Clips");
+            });
+
             // Weitere Ordner -> ein gemeinsamer Pool
             var lst = new ListBox { Width = Px(400), Height = Px(90) };
             Ui.DarkList(lst, Px(26));

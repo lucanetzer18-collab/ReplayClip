@@ -490,6 +490,8 @@ namespace ReplayClip
         public event Action<string, string, bool> ExportStarted;
         public event Action<string, int> ExportProgress;      // Ziel, Prozent
         public event Action<string, string> ExportFailed;     // Ziel, Fehler
+        /// <summary>Clip soll gelöscht werden (Editor ist dann schon zu).</summary>
+        public event Action<string> DeleteRequested;
         bool background;
         static int Px(float v) { return Theme.S(v); }
 
@@ -649,6 +651,17 @@ namespace ReplayClip
             lblSel = new Label { AutoSize = true, Margin = new Padding(Px(18), Px(11), 0, 0), Tag = "keep", ForeColor = Theme.Text, Font = Theme.Medium(9f) };
             r3.Controls.Add(btnSaveNew);
             r3.Controls.Add(btnOverwrite);
+            var btnDelete = new FxButton { Text = "Löschen", IconName = "delete", Kind = FxKind.Danger, AutoSize = true, Height = Px(38) };
+            btnDelete.Click += (s, e) =>
+            {
+                if (exporting) return;
+                if (!FxDialog.Ask(this, "Clip löschen?", Path.GetFileName(file) + " wird in den Papierkorb verschoben.", "Löschen", "Abbrechen", true)) return;
+                string f = file;
+                Close();
+                var h = DeleteRequested;
+                if (h != null) h(f);
+            };
+            r3.Controls.Add(btnDelete);
             r3.Controls.Add(lblSel);
             r3.Controls.Add(progress);
             r3.Controls.Add(lblExport);

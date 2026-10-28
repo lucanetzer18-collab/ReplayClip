@@ -179,6 +179,33 @@ namespace ReplayClip
             }
         }
 
+        /// <summary>
+        /// Speicherlimit: älteste Clips löschen, bis die Summe unter dem Limit liegt.
+        /// Geschützt: Favoriten und getaggte Clips (wenn gewünscht) sowie der neueste Clip. Liefert (Anzahl, Bytes).
+        /// </summary>
+        public static KeyValuePair<int, long> EnforceLimit(string root, long limitBytes, bool protect)
+        {
+            var items = Scan(root);
+            long total = 0;
+            foreach (var it in items) total += it.Size;
+            if (limitBytes <= 0 || total <= limitBytes) return new KeyValuePair<int, long>(0, 0);
+            items.Sort((a, b) => a.Date.CompareTo(b.Date));
+            int n = 0; long freed = 0;
+            for (int i = 0; i < items.Count - 1 && total > limitBytes; i++)
+            {
+                var it = items[i];
+                if (protect && (it.Meta.Favorite || it.Meta.Tags.Count > 0)) continue;
+                try
+                {
+                    File.Delete(it.Path);
+                    Remove(it.Path);
+                    total -= it.Size; freed += it.Size; n++;
+                }
+                catch { }
+            }
+            return new KeyValuePair<int, long>(n, freed);
+        }
+
         public static bool IsImage(string path)
         {
             string e = (System.IO.Path.GetExtension(path) ?? "").ToLowerInvariant();

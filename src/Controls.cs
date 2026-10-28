@@ -55,6 +55,15 @@ namespace ReplayClip
             return true;
         }
 
+        /// <summary>Tastenkürzel entfernen (wie Esc/Entf im Feld).</summary>
+        public void ClearHotkey()
+        {
+            Mods = 0; Key = 0;
+            Text = Format(0, 0);
+            var h = HotkeyChanged;
+            if (h != null) h(this, EventArgs.Empty);
+        }
+
         public static string Format(uint mods, int key)
         {
             if (key == 0) return "(keins)";
