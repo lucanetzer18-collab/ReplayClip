@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -363,11 +363,13 @@ namespace ReplayClip
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
                     g.Clear(Color.Transparent);
-                    using (var b = new SolidBrush(Color.FromArgb(28, 30, 36))) g.FillEllipse(b, 1, 1, 30, 30);
-                    var ring = active ? Theme.Accent : Color.FromArgb(120, 125, 135);
-                    using (var p = new Pen(ring, 2.6f)) g.DrawArc(p, 5, 5, 22, 22, -60, 300);
-                    using (var p = new Pen(ring, 2.6f)) g.DrawLine(p, 23, 5, 23, 11);
-                    using (var b = new SolidBrush(active ? Theme.Rec : Color.FromArgb(120, 125, 135))) g.FillEllipse(b, 11, 11, 10, 10);
+                    // Neues Design: dunkler Kreis, Ring mit Farbverlauf (Akzent -> Sekundär), Punkt in der Mitte
+                    using (var b = new SolidBrush(Color.FromArgb(22, 20, 32))) g.FillEllipse(b, 1, 1, 30, 30);
+                    var r = new Rectangle(5, 5, 22, 22);
+                    using (var gb = new LinearGradientBrush(r, active ? Theme.Accent : Color.FromArgb(130, 132, 145), active ? Theme.Secondary : Color.FromArgb(95, 98, 110), 45f))
+                    using (var p = new Pen(gb, 3f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                        g.DrawArc(p, r, -60, 300);
+                    using (var b = new SolidBrush(active ? Color.FromArgb(255, 70, 90) : Color.FromArgb(150, 152, 165))) g.FillEllipse(b, 11, 11, 10, 10);
                 }
                 IntPtr h = bmp.GetHicon();
                 var ic = (Icon)Icon.FromHandle(h).Clone();

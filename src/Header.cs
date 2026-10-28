@@ -160,11 +160,17 @@ namespace ReplayClip
             var ts = Gfx.Measure(Title, tf);
             int tx = lx + ls + Theme.S(14);
             TextRenderer.DrawText(g, Title, tf, new Point(tx, H / 2 - ts.Height / 2 - Theme.S(1)), Theme.Text, TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
-            var vf = Theme.Semi(7.5f);
+            // Versions-Chip: genau auf Höhe des Titels, Pille mit Farbverlauf-Rand
+            var vf = Theme.Semi(8f);
             var vs = Gfx.Measure(Version, vf);
-            var vr = new RectangleF(tx + ts.Width + Theme.S(8), H / 2f - vs.Height / 2f - Theme.S(2) - Theme.S(4), vs.Width + Theme.S(12), vs.Height + Theme.S(4));
-            Gfx.FillRound(g, Gfx.Lerp(Theme.Panel, Theme.Accent, 0.22f), vr, vr.Height / 2);
-            TextRenderer.DrawText(g, Version, vf, Rectangle.Round(vr), Gfx.Light(Theme.Accent, 0.3f), Gfx.Center);
+            float vh = Theme.S(22);
+            var vr = new RectangleF(tx + ts.Width + Theme.S(12), H / 2f - vh / 2f, vs.Width + Theme.S(18), vh);
+            using (var b = Gfx.Gradient(vr, Gfx.Alpha(Theme.Accent, 46), Gfx.Alpha(Theme.Secondary, 46), 0)) Gfx.FillRound(g, b, vr, vh / 2);
+            using (var b = Gfx.Gradient(vr, Gfx.Alpha(Theme.Accent, 200), Gfx.Alpha(Theme.Secondary, 200), 0))
+            using (var p = new Pen(b, 1.2f * Theme.Dpi))
+            using (var path = Gfx.Round(new RectangleF(vr.X + 0.5f, vr.Y + 0.5f, vr.Width - 1, vr.Height - 1), vh / 2 - 0.5f))
+                g.DrawPath(p, path);
+            TextRenderer.DrawText(g, Version, vf, Rectangle.Round(vr), Color.FromArgb(235, 236, 245), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             // Status
             int sx = Math.Max((int)vr.Right + Theme.S(36), StatusLeft);

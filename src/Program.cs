@@ -7,8 +7,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("ReplayClip")]
 [assembly: AssemblyDescription("Replay-Buffer mit NVENC und getrennten Tonspuren")]
 [assembly: AssemblyProduct("ReplayClip")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.1.1.0")]
+[assembly: AssemblyFileVersion("2.1.1.0")]
 [assembly: ComVisible(false)]
 
 namespace ReplayClip

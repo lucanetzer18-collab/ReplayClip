@@ -206,12 +206,14 @@ namespace ReplayClip
             modeSwitch = new ModeSwitch { Selected = settings.Mode };
             modeSwitch.Changed += SetMode;
             Tips.Set(modeSwitch, "Rewind = immer die letzten Minuten (Clip speichern)  ·  Aufnahme = dauerhaft aufnehmen");
-            btnShot = new FxButton { Text = "Screenshot", IconName = "camera", AutoSize = true };
+            btnShot = new FxButton { Text = "Screenshot", IconName = "camera", AutoSize = true, Radius = 20 };
+            btnSaveNow.Radius = 20;   // Pillenform wie der Rewind/Aufnahme-Umschalter
             btnShot.Click += (s, e) => TakeScreenshot();
             btnToggle = new FxButton { Text = "Buffer starten", IconName = "record", Kind = FxKind.Primary, AutoSize = false, Size = new Size(Px(170), Px(40)) };
             btnToggle.Click += (s, e) => ToggleBuffer();
             btnSettings = Ui.IconButton("settings", "Einstellungen", (s, e) => OpenSettings(null));
-            btnSettings.Size = new Size(Px(42), Px(40));
+            btnSettings.Size = new Size(Px(40), Px(40));
+            btnSettings.Radius = 20;
             btnSettings.Kind = FxKind.Normal;
             btnSettings.Margin = new Padding(Px(4), 0, 0, 0);
             header.Controls.Add(btnSaveNow);

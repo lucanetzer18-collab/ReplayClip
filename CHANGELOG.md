@@ -3,6 +3,11 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 2.1.1
+- Kopfleiste: Versions-Chip sauber auf Höhe des Titels (Pille mit Farbverlauf-Rand).
+- Knöpfe „Clip speichern“, „Screenshot“ und Einstellungen jetzt rund wie der Rewind/Aufnahme-Umschalter.
+- Neues App-Icon und Tray-Symbol im 2.x-Design (Violett/Pink).
+
 ## 2.1.0
 - Umschalter oben nur noch **Rewind ↔ Aufnahme**; **Screenshot** ist ein eigener Knopf daneben (geht immer, auch Alt+F12).
 - Bibliothek links: **Clips / Aufnahmen / Screenshots** direkt wählbar.
