@@ -858,12 +858,15 @@ namespace ReplayClip
                 using (var b = new LinearGradientBrush(new RectangleF(tr.X, tr.Y + tr.Height * 0.35f, tr.Width, tr.Height * 0.65f + 1), Color.FromArgb(0, 0, 0, 0), Color.FromArgb((int)(150 * h), 0, 0, 0), 90f))
                     g.FillRectangle(b, tr.X, tr.Y + tr.Height * 0.35f + 1, tr.Width, tr.Height * 0.65f);
                 float pr = S(22) * (0.8f + 0.2f * h);
+                if (!Library.IsImage(it.Path))   // Screenshots: kein Play-Knopf
+                {
                 var pc = new RectangleF(tr.X + tr.Width / 2f - pr, tr.Y + tr.Height / 2f - pr, pr * 2, pr * 2);
                 using (var b = new SolidBrush(Gfx.Alpha(Theme.Accent, (int)(230 * h)))) g.FillEllipse(b, pc);
                 using (var b = new SolidBrush(Gfx.Alpha(Theme.OnAccent, (int)(255 * h))))
                 {
                     float k = pr * 0.42f;
                     g.FillPolygon(b, new[] { new PointF(pc.X + pr - k * 0.7f, pc.Y + pr - k), new PointF(pc.X + pr - k * 0.7f, pc.Y + pr + k), new PointF(pc.X + pr + k * 1.05f, pc.Y + pr) });
+                }
                 }
             }
 

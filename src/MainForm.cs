@@ -211,6 +211,7 @@ namespace ReplayClip
             // links etwas Luft, rechts so knapp, dass die Kürzel-Pille gleichmäßig im Knopf sitzt
             btnSaveNow.Padding = btnShot.Padding = new Padding(Px(18), 0, Px(10), 0);
             btnShot.Click += (s, e) => TakeScreenshot();
+            Tips.Set(btnShot, "Screenshot");
             btnToggle = new FxButton { Text = "Buffer starten", IconName = "record", Kind = FxKind.Primary, AutoSize = false, Size = new Size(Px(170), Px(40)) };
             btnToggle.Click += (s, e) => ToggleBuffer();
             btnSettings = Ui.IconButton("settings", "Einstellungen", (s, e) => OpenSettings(null));
@@ -353,6 +354,16 @@ namespace ReplayClip
             if (layingOut) return;
             layingOut = true;
             btnShot.Hint = settings.ShotHotkeyKey != 0 ? HotkeyBox.Format(settings.ShotHotkeyMods, settings.ShotHotkeyKey) : null;
+            // Schmales Fenster: stufenweise kompakter, damit sich nichts überlappt
+            // (1) Kürzel ausblenden, (2) Screenshot nur als Symbol; Pegel/Status weichen danach selbst aus (RightLimit)
+            for (int level = 0; level < 3; level++)
+            {
+                btnSaveNow.HideHint = btnShot.HideHint = level >= 1;
+                btnShot.Text = level >= 2 ? "" : "Screenshot";
+                int need = Px(18) + Px(8) * 3 + btnSettings.Width + modeSwitch.Width
+                    + btnSaveNow.GetPreferredSize(Size.Empty).Width + btnShot.GetPreferredSize(Size.Empty).Width;
+                if (header.Width - need >= Px(330) + Px(260)) break;   // Platz für Logo + Status
+            }
             // erst alle Größen, dann die Positionen (Größenänderungen lösen sonst mitten im Layout ein neues aus)
             foreach (var b in new Control[] { btnSettings, btnShot, btnSaveNow, modeSwitch })
             {
@@ -367,6 +378,7 @@ namespace ReplayClip
                 x -= Px(8);
             }
             int right = x - Px(16);
+            header.RightLimit = right;
             header.StatusLeft = Px(330);
             int metersLeft = header.StatusLeft + Px(320);
             header.MetersLeft = metersLeft;
@@ -447,12 +459,19 @@ namespace ReplayClip
         {
             if (scanning) { rescanAgain = true; return; }
             scanning = true;
-            string root = LibraryRoot();
+            var roots = new List<string> { LibraryRoot() };
+            foreach (var d in settings.ExtraDirs)
+                if (!roots.Exists(r => string.Equals(r.TrimEnd('\\'), d.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))) roots.Add(d);
             var pats = settings.LibView == 2 ? new[] { "*.png", "*.jpg", "*.jpeg" } : new[] { "*.mp4" };
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                List<ClipItem> items;
-                try { items = Library.Scan(root, pats); } catch { items = new List<ClipItem>(); }
+                // Alle Ordner zu einem Pool zusammenführen (doppelte Dateien nur einmal)
+                var items = new List<ClipItem>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var root in roots)
+                {
+                    try { foreach (var it in Library.Scan(root, pats)) if (seen.Add(it.Path)) items.Add(it); } catch { }
+                }
                 OnUi(() =>
                 {
                     all = items;

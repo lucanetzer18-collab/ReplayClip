@@ -83,7 +83,9 @@ namespace ReplayClip
 
         // ---- Modi (2.0) ----
         public int Mode = 0;                   // 0 = Rewind (Replay-Puffer), 1 = Aufnahme (dauerhaft)
-        public int LibView = 0;                // Bibliothek zeigt: 0 = Clips, 1 = Aufnahmen, 2 = Screenshots
+        public int LibView = 0;
+        /// <summary>Weitere Ordner, die die Bibliothek zusätzlich durchsucht (z.B. zweite Platte) – alles erscheint als ein Pool.</summary>
+        public List<string> ExtraDirs = new List<string>();                // Bibliothek zeigt: 0 = Clips, 1 = Aufnahmen, 2 = Screenshots
         public bool OnboardingDone = false;    // Kurzanleitung beim ersten Start gezeigt
         public bool RewindPaused = false;      // Rewind-Puffer pausiert (Einstellungen)
         public string RecordDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "ReplayClip Aufnahmen");
@@ -167,6 +169,7 @@ namespace ReplayClip
             s.Tracks = new List<TrackConfig>();
             foreach (var t in Tracks) s.Tracks.Add(t.Clone());
             s.QuickTags = new List<string>(QuickTags);
+            s.ExtraDirs = new List<string>(ExtraDirs);
             s.TagColors = new Dictionary<string, int>(TagColors, StringComparer.CurrentCultureIgnoreCase);
             return s;
         }
@@ -201,6 +204,7 @@ namespace ReplayClip
             w("SettingsVersion", SettingsVersion);
             w("Mode", Mode);
             w("LibView", LibView);
+            w("ExtraDirs", string.Join("|", ExtraDirs.ToArray()));
             w("OnboardingDone", OnboardingDone);
             w("RewindPaused", RewindPaused);
             w("RecordDir", RecordDir);
@@ -372,6 +376,7 @@ namespace ReplayClip
             }
             s.Mode = Math.Max(0, Math.Min(2, GetInt(d, "Mode", 0)));
             s.LibView = Math.Max(0, Math.Min(2, GetInt(d, "LibView", s.Mode)));
+            foreach (var x in GetStr(d, "ExtraDirs", "").Split('|')) if (x.Trim().Length > 0) s.ExtraDirs.Add(x.Trim());
             if (s.Mode == 2) s.Mode = 0;           // 2.0-Screenshot-Modus gibt es nicht mehr (Screenshot ist ein eigener Knopf)
             s.OnboardingDone = GetBool(d, "OnboardingDone", false);
             s.RewindPaused = GetBool(d, "RewindPaused", false);

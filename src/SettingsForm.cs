@@ -573,6 +573,26 @@ namespace ReplayClip
                           "\nGilt für neue Clips. Die Bibliothek findet Clips in allen Unterordnern.";
             };
             cmbStructure.SelectedIndexChanged += (s, e) => { if (!loading) { settings.FolderStructure = cmbStructure.SelectedIndex; settings.Save(); } updEx(); };
+            // Weitere Ordner -> ein gemeinsamer Pool
+            var lst = new ListBox { Width = Px(400), Height = Px(90) };
+            Ui.DarkList(lst, Px(26));
+            foreach (var d in settings.ExtraDirs) lst.Items.Add(d);
+            var bAdd = Ui.Button("add", "Ordner hinzufügen …", (s, e) =>
+            {
+                using (var d = new FolderBrowserDialog { ShowNewFolderButton = false })
+                    if (d.ShowDialog(this) == DialogResult.OK && !settings.ExtraDirs.Contains(d.SelectedPath))
+                    { settings.ExtraDirs.Add(d.SelectedPath); lst.Items.Add(d.SelectedPath); settings.Save(); host.LibraryChanged(); }
+            });
+            var bDel = Ui.Button("remove", "Entfernen", (s, e) =>
+            {
+                if (lst.SelectedIndex < 0) return;
+                settings.ExtraDirs.RemoveAt(lst.SelectedIndex); lst.Items.RemoveAt(lst.SelectedIndex); settings.Save(); host.LibraryChanged();
+            });
+            var extraCol = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+            extraCol.Controls.Add(bAdd);
+            extraCol.Controls.Add(bDel);
+            Ui.Row(g, "Weitere Ordner", Ui.Flow(lst, extraCol));
+            Ui.Row(g, null, Dim("Für Fortgeschrittene: Diese Ordner (z.B. eine zweite Platte oder alte Clips) werden zusätzlich durchsucht und zusammen mit dem Speicherort als ein großer Pool angezeigt – Videos bei Clips/Aufnahmen, Bilder bei Screenshots.", 600));
             var chkHover = new FxToggle { Text = "Vorschau beim Überfahren (Maus links/rechts bewegen = durch den Clip spulen)", Checked = settings.HoverPreview };
             Ui.Row(g, "Vorschau", chkHover);
             chkHover.CheckedChanged += (s, e) => { settings.HoverPreview = chkHover.Checked; settings.Save(); host.LibraryChanged(); };

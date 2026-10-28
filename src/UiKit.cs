@@ -390,6 +390,9 @@ namespace ReplayClip
         public FxKind Kind { get { return kind; } set { kind = value; Invalidate(); } }
         public string IconName { get { return icon; } set { icon = value; if (AutoSize) PerformLayoutSafe(); Invalidate(); } }
         public string Hint { get { return hint; } set { hint = value; if (AutoSize) PerformLayoutSafe(); Invalidate(); } }
+        /// <summary>Kürzel-Pille ausblenden (z.B. wenn das Fenster schmal ist).</summary>
+        public bool HideHint { get { return hideHint; } set { if (hideHint == value) return; hideHint = value; Invalidate(); } }
+        bool hideHint;
         public bool Toggled { get { return toggled; } set { if (toggled == value) return; toggled = value; tog.To(value ? 1 : 0); } }
 
         void PerformLayoutSafe() { if (Parent != null) Parent.PerformLayout(); }
@@ -447,7 +450,7 @@ namespace ReplayClip
             var ts = Gfx.Measure(Text, Font);
             if (!string.IsNullOrEmpty(icon)) w += Gfx.Measure(Theme.Icon(icon), Theme.IconFont(IconSize)).Width + (string.IsNullOrEmpty(Text) ? 0 : Theme.S(7));
             w += ts.Width;
-            if (!string.IsNullOrEmpty(hint)) w += Theme.S(12) + Gfx.Measure(hint, Theme.F(8f)).Width + Theme.S(16);
+            if (!string.IsNullOrEmpty(hint) && !hideHint) w += Theme.S(12) + Gfx.Measure(hint, Theme.F(8f)).Width + Theme.S(16);
             int h = Math.Max(Theme.S(32), ts.Height + Theme.S(14));
             if (string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(icon)) w = Math.Max(w, h);
             return new Size(w, h);
@@ -552,7 +555,7 @@ namespace ReplayClip
             var ts = Gfx.Measure(Text, Font);
             var isz = ic != null ? Gfx.Measure(ic, iconFont) : Size.Empty;
             var hf = Theme.F(8f);
-            var hs = string.IsNullOrEmpty(hint) ? Size.Empty : Gfx.Measure(hint, hf);
+            var hs = string.IsNullOrEmpty(hint) || hideHint ? Size.Empty : Gfx.Measure(hint, hf);
             int gap = (ic != null && !string.IsNullOrEmpty(Text)) ? Theme.S(7) : 0;
             int total = isz.Width + gap + ts.Width + (hs.Width > 0 ? Theme.S(12) + hs.Width + Theme.S(16) : 0);
             int x = LeftAlign ? Padding.Left : (Width - total) / 2;

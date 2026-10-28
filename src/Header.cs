@@ -26,6 +26,8 @@ namespace ReplayClip
         bool loop;
         double savePulse = -10;
         public int StatusLeft, MetersLeft, MetersWidth;
+        /// <summary>Ab hier liegen die Knöpfe – Status und Pegel zeichnen nie darüber hinaus.</summary>
+        public int RightLimit = int.MaxValue;
 
         public HeaderBar()
         {
@@ -174,7 +176,8 @@ namespace ReplayClip
 
             // Status
             int sx = Math.Max((int)vr.Right + Theme.S(36), StatusLeft);
-            int sw = Theme.S(250);
+            int sw = Math.Min(Theme.S(250), RightLimit - sx - Theme.S(20));
+            if (sw < Theme.S(60)) sw = 0;
             var stf = Theme.Semi(8f);
             Color stc = state == RecState.Recording ? Theme.Rec : state == RecState.Saving ? Theme.Warning : state == RecState.Starting ? Theme.Secondary : Theme.TextDim;
             if (state == RecState.Recording)
@@ -182,10 +185,11 @@ namespace ReplayClip
                 float bl = 0.55f + 0.45f * (float)Math.Abs(Math.Sin(now * 2.2));
                 stc = Gfx.Alpha(stc, (int)(255 * bl));
             }
+            if (sw > 0) {
             using (var b = new SolidBrush(stc)) g.FillEllipse(b, sx, H / 2f - Theme.S(19), Theme.S(8), Theme.S(8));
             TextRenderer.DrawText(g, StatusLine.ToUpperInvariant(), stf, new Rectangle(sx + Theme.S(14), H / 2 - Theme.S(25), sw, Theme.S(20)),
                 state == RecState.Off ? Theme.TextDim : Gfx.Lerp(stc, Theme.Text, 0.15f), Gfx.Left);
-            TextRenderer.DrawText(g, SubLine, Theme.F(8.5f), new Rectangle(sx, H / 2 - Theme.S(5), sw + Theme.S(60), Theme.S(18)), Theme.TextDim, Gfx.Left);
+            TextRenderer.DrawText(g, SubLine, Theme.F(8.5f), new Rectangle(sx, H / 2 - Theme.S(5), Math.Min(sw + Theme.S(60), RightLimit - sx - Theme.S(12)), Theme.S(18)), Theme.TextDim, Gfx.Left | TextFormatFlags.EndEllipsis);
             var bar = new RectangleF(sx, H / 2f + Theme.S(16), sw, Theme.S(4));
             Gfx.FillRound(g, Theme.Panel2, bar, bar.Height / 2);
             if (fill.Value > 0.002f)
@@ -199,11 +203,12 @@ namespace ReplayClip
                 float t = (float)(sp / 1.0);
                 using (var b = new SolidBrush(Gfx.Alpha(Theme.Warning, (int)(200 * (1 - t))))) g.FillRectangle(b, bar.X, bar.Y - Theme.S(1), bar.Width, bar.Height + Theme.S(2));
             }
+            }
 
             // Live-Pegel
             int mx = MetersLeft > 0 ? MetersLeft : sx + sw + Theme.S(70);
             int mw = MetersWidth > 0 ? MetersWidth : Theme.S(170);
-            if (meterNames.Count > 0 && mw > Theme.S(60))
+            if (meterNames.Count > 0 && mw > Theme.S(60) && mx + mw <= RightLimit - Theme.S(8))
             {
                 int rows = Math.Min(4, meterNames.Count);
                 int rh = Theme.S(12);

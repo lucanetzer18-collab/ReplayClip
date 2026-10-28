@@ -6,6 +6,9 @@ automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 ## 2.2.0
 - **Sounds für jedes Ereignis**: Clip gespeichert, Hotkey gedrückt, Screenshot, Aufnahme startet, Aufnahme gespeichert – jeweils aus der Liste oder eigene Datei (Einstellungen › Sound & Hinweise).
 - **9 neue Sounds**: Erfolg, Glitzer, Level-Up, Blip, Wassertropfen, Whoosh, Laser, Kamera (mechanisch), Tiefer Ton.
+- **Weitere Bibliotheks-Ordner** (Einstellungen › Bibliothek): zusätzliche Ordner, z.B. eine zweite Platte, werden mit dem Speicherort zu einem Pool zusammengeführt.
+- Screenshots zeigen beim Überfahren keinen Play-Knopf mehr.
+- Kopfleiste überlappt nicht mehr bei schmalem Fenster: erst verschwinden die Kürzel, dann wird „Screenshot“ zum Symbol, Pegel und Status weichen aus.
 - Kopfleiste: Kürzel-Anzeige in den Knöpfen jetzt als Pille, gleichmäßige Abstände, alle Knöpfe gleich hoch; Layout springt nicht mehr, wenn sich der Knopftext ändert.
 
 ## 2.1.1
