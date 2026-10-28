@@ -1,0 +1,70 @@
+# Baut ReplayClip auf einem Windows-Server von GitHub und veröffentlicht ein Release,
+# sobald ein Versions-Tag (z.B. v1.5.1) hochgeladen wird. Die App findet das Release dann als Update.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version prüfen (Tag muss zur Version in Program.cs passen)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $m = Select-String -Path src/Program.cs -Pattern 'AssemblyVersion\("(\d+)\.(\d+)\.(\d+)'
+          if (-not $m) { throw "AssemblyVersion nicht gefunden" }
+          $g = $m.Matches[0].Groups
+          $ver = "$($g[1].Value).$($g[2].Value).$($g[3].Value)"
+          if ("${{ github.ref_type }}" -eq "tag" -and $tag -ne $ver) { throw "Tag v$tag passt nicht zu AssemblyVersion $ver in src/Program.cs" }
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Bauen
+        shell: cmd
+        run: call build.bat ci
+
+      - name: Zip packen
+        shell: pwsh
+        run: |
+          $top = "ReplayClip-$env:VERSION"
+          New-Item -ItemType Directory $top | Out-Null
+          Copy-Item ReplayClip.exe, LIESMICH.txt, build.bat, "ReplayClip starten.bat", CHANGELOG.md -Destination $top
+          Copy-Item src -Destination "$top/src" -Recurse
+          Compress-Archive -Path $top -DestinationPath "$top.zip"
+
+      - name: Release-Notizen aus CHANGELOG.md
+        shell: pwsh
+        run: |
+          $out = @(); $in = $false
+          foreach ($l in Get-Content CHANGELOG.md -Encoding UTF8) {
+            if ($l -match '^## ') {
+              if ($in) { break }
+              if ($l -match ('^## \[?v?' + [regex]::Escape($env:VERSION) + '\b')) { $in = $true }
+              continue
+            }
+            if ($in) { $out += $l }
+          }
+          if ($out.Count -eq 0) { $out = @("ReplayClip $env:VERSION") }
+          $out | Set-Content notes.md -Encoding utf8
+
+      - name: Release veröffentlichen
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" "ReplayClip-$env:VERSION.zip" --title "ReplayClip $env:VERSION" --notes-file notes.md
+
+      - name: Build als Datei aufheben (manueller Start ohne Tag)
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReplayClip-${{ env.VERSION }}
+          path: ReplayClip-${{ env.VERSION }}.zip

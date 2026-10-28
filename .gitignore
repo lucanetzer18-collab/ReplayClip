@@ -1,0 +1,6 @@
+# Build-Ergebnisse (werden von GitHub Actions gebaut und als Release angehängt)
+ReplayClip.exe
+*.old.exe
+*.zip
+ReplayClip-*/
+notes.md

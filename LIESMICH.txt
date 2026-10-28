@@ -1,0 +1,87 @@
+﻿ReplayClip – Replay-Buffer für Windows 11 (wie NVIDIA Instant Replay)
+Die Version steht in der Titelleiste und oben neben dem Namen.
+=====================================================================
+
+WAS ES MACHT
+- Nimmt im Hintergrund dauerhaft einen Monitor auf und behält die letzten X Minuten (1–20).
+- Hotkey (Standard: Alt+F10) speichert die letzten X Minuten als MP4.
+- Standard: Nach jedem gespeicherten Clip beginnt der Puffer neu – mehrere Clips hintereinander
+  enthalten keine doppelten Szenen (abschaltbar: Einstellungen > Aufnahme > Puffer).
+- Bild: Windows Desktop Duplication (GPU) + NVENC der GeForce -> kaum CPU-Last.
+- Ton: bis zu 6 getrennte Tonspuren (z.B. Discord / restlicher PC-Sound / Mikrofon).
+  Lautstärke je Spur 0–500 % (leises Mikro verstärken), mit weichem Begrenzer gegen Übersteuern.
+- Bibliothek mit Ordnern je Spiel, Tags, Favoriten und Schnitt-Editor.
+
+VORAUSSETZUNGEN
+- Windows 11 (Per-App-Ton braucht Windows 11 bzw. Win10 ab Build 20348)
+- NVIDIA-Grafikkarte mit aktuellem Treiber
+- .NET Framework 4.8 (bei Windows 11 schon dabei)
+- FFmpeg ab Version 6 (das Programm kann es selbst herunterladen)
+
+ERSTER START
+1. ReplayClip.exe irgendwohin entpacken (z.B. C:\Tools\ReplayClip) und starten.
+   SmartScreen meckert evtl. (unsigniert): "Weitere Informationen" -> "Trotzdem ausführen".
+2. Fehlt FFmpeg, erscheint oben ein Hinweis -> "Jetzt einrichten" -> "Herunterladen".
+3. Zahnrad oben rechts -> "Audiospuren": Spuren prüfen, "Test starten" zeigt Live-Pegel.
+4. "Buffer starten" – ab jetzt speichert Alt+F10 die letzten Minuten.
+
+BIBLIOTHEK (Hauptfenster)
+- Links: Alle Clips, Favoriten, Schnitte, Spiele/Apps und Tags – Klick filtert.
+- Oben: Suche, Sortierung, Kacheln/Liste, Kachelgröße, Detailbereich.
+- Rechts: Vorschau, Infos, Favorit, Tags (frei eintippen + Enter), Schnell-Tags, Aktionen.
+- Tag-Farbe ändern: Rechtsklick auf einen Tag (links in der Liste, rechts als Chip oder Schnell-Tag).
+- Tasten: 1–9 Schnell-Tag, F Favorit, Entf Papierkorb, F2 Umbenennen, Strg+C kopieren,
+  Strg+F Suche, F5 neu einlesen. Clips per Drag & Drop direkt in Discord ziehen.
+
+EDITOR (Doppelklick auf einen Clip)
+- Vorschau mit Ton, Filmstreifen und Wellenform je Spur. Mausrad = Zoom, Umschalt+Mausrad = verschieben.
+- I/O = Anfang/Ende setzen (oder gelbe Marken ziehen), Leertaste = Play/Pause, L = Schleife,
+  Pfeiltasten = 1 s (Umschalt 5 s), Komma/Punkt = 1 Bild.
+- Pro Spur: M = stumm (fällt beim Speichern raus), Regler = Lautstärke bis 500 % (Doppelklick = 100 %).
+- Speichern: Mix als Spur 1 + einzelne Spuren / nur Mix / nur einzelne Spuren.
+  "Als neuen Clip speichern" legt "... (Schnitt).mp4" neben das Original (Tags werden übernommen).
+  Nach dem Klick auf Speichern schließt der Editor sofort – gerendert wird im Hintergrund,
+  die Kachel in der Bibliothek zeigt den Fortschritt. Bei einem Fehler öffnet sich der Editor wieder.
+
+AUSSEHEN & SOUND (Einstellungen)
+- Aussehen: Primär- und Sekundärfarbe (Vorlagen oder frei), Schrift (Inter, Segoe UI Variable,
+  Bahnschrift, Segoe UI – nach Neustart), Animationen voll/reduziert/aus.
+- Sound & Hinweise: tiefer Ton beim Drücken des Hotkeys, danach der (höhere) Sound bei "Clip gespeichert" (mehrere eingebaut oder eigene WAV/MP3/OGG),
+  Lautstärke, Warnton bei Fehler, Einblendung über dem Spiel (Position wählbar).
+  Die Einblendung funktioniert im randlosen Vollbild-Fenstermodus; bei exklusivem Vollbild
+  zeichnet Windows nichts über das Spiel – dann hörst du nur den Sound.
+
+UPDATES
+- ReplayClip prüft beim Start und alle 6 Stunden auf GitHub, ob es eine neue Version gibt.
+  Oben erscheint dann "ReplayClip x.y ist verfügbar" -> Neuerungen ansehen -> "Jetzt aktualisieren".
+  Das Update wird geladen, die EXE ausgetauscht und ReplayClip startet neu.
+- Einstellungen > Allgemein > Updates: automatisch suchen an/aus, "Jetzt nach Updates suchen", GitHub-Repo.
+- Liegt ReplayClip in "C:\Programme", fehlen die Schreibrechte – dann einen eigenen Ordner nehmen.
+
+TON TESTEN (Einstellungen > Audiospuren > "Pegel und Test")
+- "Test starten" nimmt nur den Ton auf und zeigt pro Spur und Quelle, ob etwas ankommt.
+- "Diagnose kopieren" legt einen Bericht in die Zwischenablage.
+- Mikro still? Windows-Einstellungen > Datenschutz und Sicherheit > Mikrofon >
+  "Desktop-Apps den Zugriff erlauben" = Ein. Bei Headsets oft "Standard-Kommunikationsgerät" wählen.
+
+HINWEISE
+- Alt+F10 ist auch der Hotkey der NVIDIA App: dort Instant Replay ausschalten oder hier eine
+  andere Taste setzen (Einstellungen > Tastenkürzel).
+- Schließen (X) blendet nur aus – ReplayClip läuft im Infobereich weiter. Beenden über das Tray-Symbol.
+- FFmpeg läuft als Unterprozess von ReplayClip (im Task-Manager unter ReplayClip aufklappbar). Wird ReplayClip
+  beendet – auch per "Task beenden" –, beendet Windows FFmpeg automatisch mit.
+- "ReplayClip starten.bat" (und build.bat nach dem Bauen) beendet alle anderen laufenden ReplayClip-Versionen
+  samt FFmpeg und öffnet das Fenster direkt. Startet man eine EXE aus einem anderen Ordner, ersetzt sie die alte
+  Instanz ebenfalls automatisch.
+- Viele Player spielen nur die ERSTE Tonspur ab. VLC: Audio > Audiospur. DaVinci Resolve:
+  Clip-Attribute > Audio > Anzahl Spuren einstellen, dann neu auf die Timeline ziehen.
+- Der Puffer liegt als 2-Sekunden-Stücke auf der Platte (nicht im RAM). SSD empfohlen.
+- Geschützte Inhalte (Netflix etc.) werden schwarz aufgenommen.
+
+DATEIEN
+- Einstellungen, Bibliothek (Tags/Favoriten), Vorschaubilder, Puffer: %LOCALAPPDATA%\ReplayClip
+- Clips: Videos\ReplayClip (änderbar)
+
+SELBST NEU BAUEN
+- build.bat doppelklicken (nutzt den in Windows eingebauten C#-Compiler).
+- Quellcode liegt im Ordner src. Schrift Inter: SIL Open Font License (src\fonts\LICENSE-Inter.txt).
