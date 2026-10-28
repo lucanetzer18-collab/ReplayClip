@@ -3,6 +3,14 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 1.6.0
+- **Für Discord**: Clip mit einem Klick unter Discords Upload-Grenze rechnen (10 / 50 / 500 MB einstellbar) – landet direkt in der Zwischenablage, in Discord Strg+V.
+- **Hover-Vorschau** in der Bibliothek: Maus über eine Kachel halten und links/rechts bewegen = durch den Clip spulen.
+- **Mehrere Abschnitte schneiden**: im Editor Auswahl setzen und **A** drücken (oder „+ Abschnitt“) – alle Abschnitte werden beim Speichern aneinandergehängt.
+- **Controller-Hotkey**: Clip speichern per Tastenkombination am Controller (Einstellungen › Tastenkürzel).
+- **Rauschunterdrückung** je Tonspur (filtert Tastatur, Lüfter, Rauschen – ideal fürs Mikro).
+- Weniger RAM und CPU: Im Infobereich werden Vorschaubilder freigegeben und der Arbeitsspeicher an Windows zurückgegeben; die Kopfleiste zeichnet nicht mehr, solange das Fenster versteckt ist; kleinere Bild-Caches.
+
 ## 1.5.1
 - Läuft jetzt auch mit **AMD-Grafikkarten** (AMF), **Intel-/Onboard-Grafik** (Quick Sync) und **ganz ohne Grafikkarte** (Prozessor, x264).
   Einstellungen › Aufnahme › Encoder: „Automatisch erkennen“ testet, was auf dem PC funktioniert, und zeigt das Ergebnis an.

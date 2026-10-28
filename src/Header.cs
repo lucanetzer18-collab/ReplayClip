@@ -77,6 +77,9 @@ namespace ReplayClip
             return (float)Math.Max(0, Math.Min(1, (db + 60) / 60));
         }
 
+        /// <summary>Animationen wieder anwerfen (Fenster ist wieder sichtbar).</summary>
+        public void Wake() { StartLoop(); }
+
         void StartLoop()
         {
             if (loop || !IsHandleCreated) return;
@@ -94,6 +97,9 @@ namespace ReplayClip
                     meterPeaks[i] = Math.Max(meterLevels[i], meterPeaks[i] - dt * 0.35f);
                     if (meterLevels[i] > 0 || meterPeaks[i] > 0) any = true;
                 }
+                // Fenster versteckt oder minimiert: nichts zeichnen, Schleife ruht (spart CPU) – Wake() startet neu
+                var f = FindForm();
+                if (f == null || !f.Visible || f.WindowState == FormWindowState.Minimized) { loop = false; return false; }
                 bool live = state != RecState.Off || any || Anim.Now - savePulse < 1.2 || recFade.Value > 0.01f;
                 // Ruhige Zustände (Puffer läuft, Pegel) max. ~60 Bilder/s (auch bei 144-Hz-Monitor) – spart Zeit für flüssige Bibliothek.
                 // Nur der kurze Speicher-Effekt läuft mit voller Bildrate.

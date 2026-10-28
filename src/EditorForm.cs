@@ -21,6 +21,25 @@ namespace ReplayClip
         public float[][] Waves;
         public List<KeyValuePair<double, Bitmap>> Film;
         public bool Playing, Loop;
+        /// <summary>Gemerkte Abschnitte (Start, Ende). Leer = nur die aktuelle Auswahl wird gespeichert.</summary>
+        public readonly List<double[]> Segments = new List<double[]>();
+
+        /// <summary>Was beim Speichern rauskommt: die Abschnitte (sortiert) oder die aktuelle Auswahl.</summary>
+        public List<double[]> ExportRanges()
+        {
+            var l = new List<double[]>();
+            if (Segments.Count == 0) { l.Add(new[] { In, Out }); return l; }
+            foreach (var s in Segments) l.Add(new[] { s[0], s[1] });
+            l.Sort((a, b) => a[0].CompareTo(b[0]));
+            return l;
+        }
+
+        public double ExportLength()
+        {
+            double d = 0;
+            foreach (var r in ExportRanges()) d += r[1] - r[0];
+            return d;
+        }
 
         public void ClampView()
         {
@@ -287,6 +306,15 @@ namespace ReplayClip
                 if (xout < w) g.FillRectangle(b, xout, RulerH, w - xout, Height - RulerH);
             }
             using (var b = new SolidBrush(Gfx.Alpha(Theme.Warning, 28))) g.FillRectangle(b, xin, 0, Math.Max(0, xout - xin), RulerH);
+            // gemerkte Abschnitte: farbige Balken mit Nummer
+            for (int k = 0; k < st.Segments.Count; k++)
+            {
+                float a = X(st.Segments[k][0]), z = X(st.Segments[k][1]);
+                using (var b = new SolidBrush(Gfx.Alpha(Theme.Accent, 60))) g.FillRectangle(b, a, RulerH, Math.Max(1, z - a), Height - RulerH);
+                using (var b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, a, RulerH - Theme.S(4), Math.Max(1, z - a), Theme.S(4));
+                if (z - a > Theme.S(16))
+                    TextRenderer.DrawText(g, (k + 1).ToString(), Theme.Semi(8f), new Rectangle((int)a + Theme.S(3), RulerH + Theme.S(2), Theme.S(20), Theme.S(16)), Theme.OnAccent == Color.White ? Color.White : Theme.Accent, TextFormatFlags.Left | TextFormatFlags.NoPadding);
+            }
 
             // Hover-Linie
             if (st.HoverT >= 0 && drag == DragMode.None)
@@ -556,9 +584,14 @@ namespace ReplayClip
             Tips.Set(bOut, "Ende der Auswahl an der Abspielposition setzen (O)");
             var bSel = Ui.Button("play", "Auswahl", (s, e) => PlaySelection());
             Tips.Set(bSel, "Nur die Auswahl abspielen");
-            var bReset = Ui.IconButton("refresh", "Auswahl zurücksetzen", (s, e) => { st.In = 0; st.Out = st.Duration; RangeUpdated(); });
+            var bReset = Ui.IconButton("refresh", "Auswahl und Abschnitte zurücksetzen", (s, e) => { st.In = 0; st.Out = st.Duration; st.Segments.Clear(); RangeUpdated(); });
+            var bAdd = new FxButton { Text = "+ Abschnitt  A", AutoSize = true };
+            bAdd.Click += (s, e) => AddSegment();
+            Tips.Set(bAdd, "Aktuelle Auswahl als Abschnitt merken (A). Mehrere Abschnitte werden beim Speichern aneinandergehängt.\nRechtsklick: letzten Abschnitt entfernen");
+            bAdd.MouseUp += (s, e) => { if (e.Button == MouseButtons.Right && st.Segments.Count > 0) { st.Segments.RemoveAt(st.Segments.Count - 1); RangeUpdated(); } };
             rightFlow.Controls.Add(bIn);
             rightFlow.Controls.Add(bOut);
+            rightFlow.Controls.Add(bAdd);
             rightFlow.Controls.Add(bSel);
             rightFlow.Controls.Add(bReset);
             tr.Controls.Add(leftFlow, 0, 0);
@@ -663,7 +696,7 @@ namespace ReplayClip
             st.In = 0; st.Out = info.Duration; st.Pos = 0;
             st.ViewStart = 0; st.ViewLen = info.Duration;
             zoomStart = 0; zoomLen = info.Duration;
-            st.Names.Clear(); st.Enabled.Clear(); st.Volume.Clear();
+            st.Names.Clear(); st.Enabled.Clear(); st.Volume.Clear(); st.Segments.Clear();
             st.Waves = null;
             st.Film = null;
             foreach (var n in info.AudioNames) { st.Names.Add(n); st.Enabled.Add(true); st.Volume.Add(100); }
@@ -959,6 +992,15 @@ namespace ReplayClip
             RangeUpdated();
         }
 
+        void AddSegment()
+        {
+            if (st.Out - st.In < 0.1) return;
+            foreach (var s in st.Segments) if (Math.Abs(s[0] - st.In) < 0.01 && Math.Abs(s[1] - st.Out) < 0.01) return;
+            st.Segments.Add(new[] { st.In, st.Out });
+            RangeUpdated();
+            Toast.Show(this, "Abschnitt " + st.Segments.Count + " gemerkt", "Nächste Stelle mit I/O auswählen und wieder A drücken. Gespeichert werden alle Abschnitte hintereinander.", "cut", Theme.Accent);
+        }
+
         void RangeUpdated()
         {
             UpdateLabels();
@@ -970,7 +1012,8 @@ namespace ReplayClip
             lblTime.Text = EditorState.Fmt(st.Pos);
             var d = root.Controls.Find("dur", true);
             if (d.Length > 0) d[0].Text = "/ " + EditorState.Fmt(st.Duration);
-            lblSel.Text = string.Format(CultureInfo.CurrentCulture, "Auswahl {0} – {1}  ·  {2:0.0} s", EditorState.Fmt(st.In), EditorState.Fmt(st.Out), st.Out - st.In);
+            lblSel.Text = string.Format(CultureInfo.CurrentCulture, "Auswahl {0} – {1}  ·  {2:0.0} s", EditorState.Fmt(st.In), EditorState.Fmt(st.Out), st.Out - st.In) +
+                (st.Segments.Count > 0 ? string.Format(CultureInfo.CurrentCulture, "     ▸ Speichert {0} Abschnitt(e), zusammen {1:0.0} s", st.Segments.Count, st.ExportLength()) : "");
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -982,6 +1025,7 @@ namespace ReplayClip
                 case Keys.Space: TogglePlay(); return true;
                 case Keys.I: SetIn(); return true;
                 case Keys.O: SetOut(); return true;
+                case Keys.A: AddSegment(); return true;
                 case Keys.L: ToggleLoop(); return true;
                 case Keys.Left: SeekTo(st.Pos - (shift ? 5 : 1)); return true;
                 case Keys.Right: SeekTo(st.Pos + (shift ? 5 : 1)); return true;
@@ -1016,13 +1060,43 @@ namespace ReplayClip
             var names = new List<string>();
             string graph = EditorFilters.Build(en, st.Volume, st.Names, mode, labels, names);
             double dur = st.Out - st.In;
+            bool multi = st.Segments.Count > 0;
 
             var sb = new StringBuilder("-hide_banner -loglevel error -nostdin -y ");
-            sb.Append("-ss ").Append(EditorFilters.T(st.In)).Append(" -t ").Append(EditorFilters.T(dur)).Append(" -i ").Append(Ffmpeg.Q(file)).Append(' ');
-            if (graph.Length > 0) sb.Append("-filter_complex \"").Append(graph).Append("\" ");
-            sb.Append("-map 0:v:0 ");
+            if (!multi)
+            {
+                sb.Append("-ss ").Append(EditorFilters.T(st.In)).Append(" -t ").Append(EditorFilters.T(dur)).Append(" -i ").Append(Ffmpeg.Q(file)).Append(' ');
+                if (graph.Length > 0) sb.Append("-filter_complex \"").Append(graph).Append("\" ");
+                sb.Append("-map 0:v:0 ");
+            }
+            else
+            {
+                // Mehrere Abschnitte: jeden zuschneiden und hintereinanderhängen (Bild + alle aktiven Tonspuren)
+                var ranges = st.ExportRanges();
+                var fc = new StringBuilder();
+                var cat = new StringBuilder();
+                for (int k = 0; k < ranges.Count; k++)
+                {
+                    string a = EditorFilters.T(ranges[k][0]), z = EditorFilters.T(ranges[k][1]);
+                    fc.AppendFormat(ci, "[0:v:0]trim=start={0}:end={1},setpts=PTS-STARTPTS[sv{2}];", a, z, k);
+                    cat.AppendFormat(ci, "[sv{0}]", k);
+                    foreach (int i in en)
+                    {
+                        fc.AppendFormat(ci, "[0:a:{0}]atrim=start={1}:end={2},asetpts=PTS-STARTPTS[sa{3}_{0}];", i, a, z, k);
+                        cat.AppendFormat(ci, "[sa{0}_{1}]", k, i);
+                    }
+                }
+                fc.Append(cat).AppendFormat(ci, "concat=n={0}:v=1:a={1}[cv]", ranges.Count, en.Count);
+                foreach (int i in en) fc.AppendFormat(ci, "[ca{0}]", i);
+                if (graph.Length > 0)
+                {
+                    foreach (int i in en) graph = graph.Replace("[0:a:" + i + "]", "[ca" + i + "]");
+                    fc.Append(';').Append(graph);
+                }
+                sb.Append("-i ").Append(Ffmpeg.Q(file)).Append(" -filter_complex \"").Append(fc).Append("\" -map \"[cv]\" ");
+            }
             foreach (var l in labels) sb.Append("-map \"").Append(l).Append("\" ");
-            if (chkPrecise.Checked) sb.Append(videoArgs);
+            if (chkPrecise.Checked || multi) sb.Append(videoArgs);
             else sb.Append("-c:v copy -avoid_negative_ts make_zero ");
             if (labels.Count > 0) sb.Append("-c:a aac -b:a 192k ");
             else sb.Append("-an ");
@@ -1038,7 +1112,7 @@ namespace ReplayClip
         void Export(bool overwrite)
         {
             if (exporting) return;
-            if (st.Out - st.In < 0.1) { FxDialog.Info(this, "Auswahl zu kurz", "Die Auswahl muss mindestens 0,1 Sekunden lang sein.", "warning"); return; }
+            if (st.Segments.Count == 0 && st.Out - st.In < 0.1) { FxDialog.Info(this, "Auswahl zu kurz", "Die Auswahl muss mindestens 0,1 Sekunden lang sein.", "warning"); return; }
             if (overwrite && !FxDialog.Ask(this, "Original überschreiben?", "Das Original wird durch die bearbeitete Version ersetzt. Das lässt sich nicht rückgängig machen.", "Überschreiben", "Abbrechen", true)) return;
             StopPlayback();
             exporting = true;
@@ -1055,10 +1129,10 @@ namespace ReplayClip
             string argsTemplate = BuildExportArgs(outPath, VENC);
             bool srcHevc = info.VideoCodec.StartsWith("hevc") || info.VideoCodec.StartsWith("h265");
             string encPref = Settings.Load().Encoder;
-            double dur = st.Out - st.In;
+            double dur = st.ExportLength();
             string src = file;
             var gr = grabber;
-            bool precise = chkPrecise.Checked;
+            bool precise = chkPrecise.Checked || st.Segments.Count > 0;
 
             ThreadPool.QueueUserWorkItem(_ =>
             {

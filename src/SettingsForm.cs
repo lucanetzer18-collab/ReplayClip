@@ -104,7 +104,7 @@ namespace ReplayClip
         Panel current, pageAudio, hotkeyPage;
 
         // Aufnahme
-        FxCombo cmbMonitor, cmbFps, cmbCodec, cmbBitrate, cmbEncoder;
+        FxCombo cmbMonitor, cmbFps, cmbCodec, cmbBitrate, cmbEncoder, cmbController;
         Label lblEncoder;
         FxNumber numMinutes;
         FxToggle chkMouse, chkReset;
@@ -118,6 +118,7 @@ namespace ReplayClip
         FxCombo cmbTrackType, cmbDevice;
         ListBox lstApps;
         FxSlider trkVolume;
+        FxToggle chkDenoise;
         Label lblVolume, lblDevice, lblApps;
         Panel appsPanel, edScroll;
         Card grpEditor;
@@ -338,6 +339,16 @@ namespace ReplayClip
             hkSave = new HotkeyBox();
             hkToggle = new HotkeyBox();
             Ui.Row(keys, "Clip speichern", Ui.Field(hkSave, Px(230), null, "save"));
+            cmbController = Ui.Combo(Px(260));
+            foreach (var n in Gamepad.Names) cmbController.Items.Add(n);
+            Ui.Row(keys, "Controller", cmbController);
+            cmbController.SelectedIndexChanged += (s, e) =>
+            {
+                if (loading) return;
+                settings.ControllerCombo = cmbController.SelectedIndex;
+                settings.Save();
+                Gamepad.SetCombo(settings.ControllerCombo);
+            };
             Ui.Row(keys, null, Dim("Ins Feld klicken und die gewünschte Kombination drücken. Entf = kein Tastenkürzel.", 560));
             lblHotkeyWarn = new Label { AutoSize = true, ForeColor = Theme.Danger, MaximumSize = new Size(Px(560), 0), Tag = "keep" };
             Ui.Row(keys, null, lblHotkeyWarn);
@@ -427,6 +438,15 @@ namespace ReplayClip
                           "\nGilt für neue Clips. Die Bibliothek findet Clips in allen Unterordnern.";
             };
             cmbStructure.SelectedIndexChanged += (s, e) => { if (!loading) { settings.FolderStructure = cmbStructure.SelectedIndex; settings.Save(); } updEx(); };
+            var chkHover = new FxToggle { Text = "Vorschau beim Überfahren (Maus links/rechts bewegen = durch den Clip spulen)", Checked = settings.HoverPreview };
+            Ui.Row(g, "Vorschau", chkHover);
+            chkHover.CheckedChanged += (s, e) => { settings.HoverPreview = chkHover.Checked; settings.Save(); host.LibraryChanged(); };
+            var cmbDiscord = Ui.Combo(Px(300));
+            foreach (var n in DiscordExport.LimitNames) cmbDiscord.Items.Add(n);
+            cmbDiscord.SelectedIndex = Math.Max(0, Array.IndexOf(DiscordExport.Limits, settings.DiscordLimitMB));
+            Ui.Row(g, "„Für Discord“", cmbDiscord);
+            Ui.Row(g, null, Dim("Rechnet den Clip so klein, dass er unter Discords Upload-Grenze passt, und legt ihn in die Zwischenablage (Strg+V in Discord).", 600));
+            cmbDiscord.SelectedIndexChanged += (s, e) => { settings.DiscordLimitMB = DiscordExport.Limits[Math.Max(0, cmbDiscord.SelectedIndex)]; settings.Save(); };
 
             var exp = Ui.Grid();
             cmbAfterExport = Ui.Combo(Px(300));
@@ -853,6 +873,7 @@ namespace ReplayClip
             chkMouse.Checked = settings.DrawMouse;
             chkReset.Checked = settings.ResetBufferAfterSave;
             hkSave.SetHotkey(settings.SaveHotkeyMods, settings.SaveHotkeyKey);
+            cmbController.SelectedIndex = Math.Max(0, Math.Min(Gamepad.Names.Length - 1, settings.ControllerCombo));
             hkToggle.SetHotkey(settings.ToggleHotkeyMods, settings.ToggleHotkeyKey);
             UpdateEstimate();
 
@@ -983,6 +1004,8 @@ namespace ReplayClip
             trkVolume = new FxSlider { Minimum = 0, Maximum = 500, Width = Px(260), SmallChange = 5, LargeChange = 25, DefaultValue = 100 };
             lblVolume = new Label { AutoSize = true, Margin = new Padding(Px(8), Px(6), 0, 0), Tag = "keep", ForeColor = Theme.Text };
             Ui.Row(ed, "Lautstärke", Ui.Flow(trkVolume, lblVolume));
+            chkDenoise = new FxToggle { Text = "Rauschunterdrückung (filtert Tastatur, Lüfter, Rauschen – ideal fürs Mikrofon)" };
+            Ui.Row(ed, "", chkDenoise);
 
             Ui.Row(ed, null, Dim("•  Bestimmte Apps: nur der Ton dieser Programme (inkl. Unterprozesse), z.B. Discord.\n" +
                        "•  Restlicher PC-Sound: alles, was keiner App-Spur zugeordnet ist (Spiele, Browser, Systemklänge …).\n" +
@@ -1041,6 +1064,13 @@ namespace ReplayClip
                 var d = cmbDevice.SelectedItem as AudioDeviceInfo;
                 t.DeviceId = d == null ? "" : (d.Id ?? "");
                 lstTracks.Invalidate();
+                MarkRestartNeeded();
+            };
+            chkDenoise.CheckedChanged += (s, e) =>
+            {
+                var t = CurrentTrack();
+                if (t == null || editorLoading) return;
+                t.Denoise = chkDenoise.Checked;
                 MarkRestartNeeded();
             };
             trkVolume.ValueChanged += (s, e) =>
@@ -1105,6 +1135,7 @@ namespace ReplayClip
             lstApps.Items.Clear();
             foreach (var a in t.Apps) lstApps.Items.Add(a + ".exe");
             trkVolume.Value = Math.Max(0, Math.Min(500, t.Volume));
+            chkDenoise.Checked = t.Denoise;
             lblVolume.Text = trkVolume.Value + " %";
             editorLoading = false;
             UpdateEditorVisibility();

@@ -9,7 +9,9 @@ Schlanker Replay-Buffer für Windows 11 – wie NVIDIA Instant Replay, aber mit 
 - Bild über Desktop Duplication + Grafikkarten-Encoder: **NVIDIA** (NVENC), **AMD** (AMF), **Intel/Onboard** (Quick Sync) – oder ohne Grafikkarte über den Prozessor
 - Bis zu 6 **getrennte Tonspuren**, z.B. Discord / restlicher PC-Sound / Mikrofon, Lautstärke je Spur bis 500 %
 - **Bibliothek**: Ordner je Spiel, Kachel- und Listenansicht, Tags mit eigenen Farben, Schnell-Tags 1–9, Favoriten, Drag & Drop nach Discord
-- **Editor**: kürzen, Spuren stummschalten, Lautstärke, Export als Mix und/oder einzelne Spuren – rendert im Hintergrund
+- **Editor**: kürzen, mehrere Abschnitte zusammenschneiden, Spuren stummschalten, Lautstärke, Export als Mix und/oder einzelne Spuren – rendert im Hintergrund
+- **Für Discord**: Clip mit einem Klick unter das Upload-Limit rechnen und in die Zwischenablage legen
+- **Hover-Vorschau** in der Bibliothek, **Controller-Hotkey**, **Rauschunterdrückung** fürs Mikro
 - Sounds und Einblendung beim Speichern, eigene Akzentfarben, **automatische Updates** über GitHub Releases
 
 ## Installation

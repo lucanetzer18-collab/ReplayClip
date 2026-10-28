@@ -149,6 +149,7 @@ namespace ReplayClip
 
         public void LibraryChanged()
         {
+            browser.HoverPreview = settings.HoverPreview;
             BuildQuickButtons();
             Rescan();
         }
@@ -267,7 +268,7 @@ namespace ReplayClip
             tools.Controls.Add(folder);
 
             // ---- Clip-Ansicht ----
-            browser = new ClipBrowser { Dock = DockStyle.Fill, Thumbs = thumbs, ListMode = settings.GalleryList, TileSize = settings.TileSize, Font = Theme.F(9f) };
+            browser = new ClipBrowser { Dock = DockStyle.Fill, Thumbs = thumbs, HoverPreview = settings.HoverPreview, FfmpegPath = () => Ffmpeg.Find(settings), ListMode = settings.GalleryList, TileSize = settings.TileSize, Font = Theme.F(9f) };
             browser.SelectionChanged += () => { UpdateDetails(); FadeDetails(); };
             browser.Activated += it => OpenEditor(it.Path);
             browser.FavoriteClicked += it => { it.Meta.Favorite = !it.Meta.Favorite; Library.SaveSoon(); RebuildNav(); UpdateDetails(); browser.Invalidate(); };
@@ -521,6 +522,7 @@ namespace ReplayClip
             detActions.Controls.Add(ActionButton("play", "Abspielen", half, (s, e) => { var sel = browser.Selected; if (sel.Count > 0) Shell.OpenFile(sel[0].Path); }));
             detActions.Controls.Add(ActionButton("folder", "Im Ordner", half, (s, e) => { var sel = browser.Selected; if (sel.Count > 0) Shell.SelectInExplorer(sel[0].Path); }));
             detActions.Controls.Add(ActionButton("copy", "Kopieren", half, (s, e) => CopySelected()));
+            detActions.Controls.Add(ActionButton("save", "Für Discord", half, (s, e) => DiscordSelected()));
             detActions.Controls.Add(ActionButton("rename", "Umbenennen", half, (s, e) => RenameSelected()));
             var del = ActionButton("delete", "Löschen", half, (s, e) => DeleteSelected());
             del.Kind = FxKind.Danger;
@@ -838,6 +840,37 @@ namespace ReplayClip
             TagsChanged();
         }
 
+        bool discordBusy;
+
+        /// <summary>Clip für Discord verkleinern und als Datei in die Zwischenablage legen.</summary>
+        void DiscordSelected()
+        {
+            var sel = browser.Selected;
+            if (sel.Count == 0 || discordBusy) return;
+            string ff = Ffmpeg.Find(settings);
+            if (ff == null) { FxDialog.Info(this, "FFmpeg fehlt", "FFmpeg wird dafür benötigt (Einstellungen › Speicher & FFmpeg).", "warning"); return; }
+            string file = sel[0].Path;
+            discordBusy = true;
+            ShowBanner("Für Discord verkleinern: " + Path.GetFileName(file) + " …", null, null, true);
+            DiscordExport.Run(ff, file, settings.DiscordLimitMB, settings.Encoder,
+                pct => OnUi(() => { if (discordBusy) bannerText.Text = "★   Für Discord verkleinern … " + pct + " %"; }),
+                (outFile, err) => OnUi(() =>
+                {
+                    discordBusy = false;
+                    if (err != null) { ShowBanner("Für Discord fehlgeschlagen: " + err, null, null); return; }
+                    HideBanner();
+                    try
+                    {
+                        var sc = new System.Collections.Specialized.StringCollection();
+                        sc.Add(outFile);
+                        Clipboard.SetFileDropList(sc);
+                    }
+                    catch { }
+                    Toast.Show(this, "Bereit für Discord", ClipBrowser.FmtSize(new FileInfo(outFile).Length) + " – in der Zwischenablage, in Discord mit Strg+V einfügen.", "check", Theme.Accent,
+                        null, () => Shell.SelectInExplorer(outFile));
+                }));
+        }
+
         void CopySelected()
         {
             var sel = browser.Selected;
@@ -908,6 +941,7 @@ namespace ReplayClip
             m.Items.Add("Im Standard-Player abspielen", null, (s, e) => Shell.OpenFile(sel[0].Path));
             m.Items.Add("Im Explorer anzeigen", null, (s, e) => Shell.SelectInExplorer(sel[0].Path));
             m.Items.Add("Kopieren (zum Einfügen in Discord)", null, (s, e) => CopySelected());
+            if (sel.Count == 1) m.Items.Add("Für Discord verkleinern (≤ " + settings.DiscordLimitMB + " MB) und kopieren", null, (s, e) => DiscordSelected());
             if (sel.Count == 1) m.Items.Add("Umbenennen  (F2)", null, (s, e) => RenameSelected());
             m.Items.Add(new ToolStripSeparator());
             bool allFav = true;
@@ -1077,6 +1111,13 @@ namespace ReplayClip
 
         void AfterStartup()
         {
+            Gamepad.Pressed += () => { if (recorder.IsActive) recorder.SaveClip(); };
+            // alte "Für Discord"-Dateien aufräumen
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try { foreach (var f in Directory.GetFiles(DiscordExport.OutDir)) if (File.GetLastWriteTime(f) < DateTime.Now.AddDays(-2)) File.Delete(f); } catch { }
+            });
+            Gamepad.SetCombo(settings.ControllerCombo);
             Rescan();
             Updater.CleanupOld();
             if (Program.JustUpdated)
@@ -1129,6 +1170,7 @@ namespace ReplayClip
             {
                 e.Cancel = true;
                 Hide();
+                TrimMemorySoon();
                 if (!balloonShown)
                 {
                     balloonShown = true;
@@ -1451,6 +1493,37 @@ namespace ReplayClip
             Toast.Show(this, "Clip nicht gespeichert", msg, "error", Theme.Danger);
             if (settings.NotifyBalloon) { updateBalloon = false; tray.ShowBalloonTip(4000, "Clip nicht gespeichert", msg, ToolTipIcon.Error); }
             UpdateStatus();
+        }
+
+        /// <summary>RAM freigeben, wenn das Fenster weg ist: Vorschaubilder/Caches leeren, Arbeitsspeicher an Windows zurückgeben.</summary>
+        void TrimMemorySoon()
+        {
+            var t = new System.Windows.Forms.Timer { Interval = 1500 };
+            t.Tick += (s, e) =>
+            {
+                t.Dispose();
+                if (Visible && WindowState != FormWindowState.Minimized) return;
+                try { browser.TrimMemory(); thumbs.Clear(); } catch { }
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                try { Native.SetProcessWorkingSetSize(Process.GetCurrentProcess().Handle, (IntPtr)(-1), (IntPtr)(-1)); } catch { }
+            };
+            t.Start();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (header == null) return;
+            if (WindowState == FormWindowState.Minimized) TrimMemorySoon();
+            else header.Wake();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible && header != null) header.Wake();
         }
 
         void UpdateMeters()

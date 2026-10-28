@@ -23,6 +23,7 @@ namespace ReplayClip
         public string DeviceId = "";            // nur Mikrofon, leer = Standardgerät, "@comm" = Standard-Kommunikationsgerät
         public List<string> Apps = new List<string>();
         public int Volume = 100;                 // Prozent
+        public bool Denoise;                     // Rauschunterdrückung (Tastatur, Lüfter) – v.a. fürs Mikrofon
 
         public TrackConfig Clone()
         {
@@ -50,7 +51,10 @@ namespace ReplayClip
         public int MonitorIndex = 0;
         public int Fps = 60;
         public string Codec = "h264";          // h264 | hevc
-        public string Encoder = "auto";        // auto | nvidia | amd | intel | cpu
+        public string Encoder = "auto";
+        public int ControllerCombo = 0;
+        public int DiscordLimitMB = 10;
+        public bool HoverPreview = true;       // Bibliothek: Vorschau beim Überfahren        // Größenlimit für "Für Discord" (10 / 50 / 500)        // Controller-Kombination zum Speichern (0 = aus, siehe Gamepad.Names)        // auto | nvidia | amd | intel | cpu
         public int BitrateMbps = 30;
         public int BufferMinutes = 5;
         public bool DrawMouse = true;
@@ -155,6 +159,9 @@ namespace ReplayClip
             w("Fps", Fps);
             w("Codec", Codec);
             w("Encoder", Encoder);
+            w("ControllerCombo", ControllerCombo);
+            w("DiscordLimitMB", DiscordLimitMB);
+            w("HoverPreview", HoverPreview);
             w("BitrateMbps", BitrateMbps);
             w("BufferMinutes", BufferMinutes);
             w("DrawMouse", DrawMouse);
@@ -208,6 +215,7 @@ namespace ReplayClip
                 w(p + "DeviceId", t.DeviceId);
                 w(p + "Apps", string.Join(";", t.Apps.ToArray()));
                 w(p + "Volume", t.Volume);
+                w(p + "Denoise", t.Denoise);
             }
             try
             {
@@ -239,6 +247,10 @@ namespace ReplayClip
             s.Fps = GetInt(d, "Fps", s.Fps);
             s.Codec = GetStr(d, "Codec", s.Codec);
             s.Encoder = GetStr(d, "Encoder", "auto");
+            s.ControllerCombo = GetInt(d, "ControllerCombo", 0);
+            s.DiscordLimitMB = GetInt(d, "DiscordLimitMB", 10);
+            s.HoverPreview = GetBool(d, "HoverPreview", true);
+            if (Array.IndexOf(DiscordExport.Limits, s.DiscordLimitMB) < 0) s.DiscordLimitMB = 10;
             if (Array.IndexOf(Encoders.Prefs, s.Encoder) < 0) s.Encoder = "auto";
             s.BitrateMbps = GetInt(d, "BitrateMbps", s.BitrateMbps);
             s.BufferMinutes = Math.Max(1, Math.Min(20, GetInt(d, "BufferMinutes", s.BufferMinutes)));
@@ -308,6 +320,7 @@ namespace ReplayClip
                 foreach (var a in GetStr(d, p + "Apps", "").Split(';'))
                     if (a.Trim().Length > 0) t.Apps.Add(Native.ExeKey(a));
                 t.Volume = Math.Max(0, Math.Min(500, GetInt(d, p + "Volume", 100)));
+                t.Denoise = GetBool(d, p + "Denoise", false);
                 s.Tracks.Add(t);
             }
             return s;

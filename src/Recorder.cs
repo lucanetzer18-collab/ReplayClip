@@ -185,9 +185,17 @@ namespace ReplayClip
               .Append(":framerate=").Append(cfg.Fps)
               .Append(":draw_mouse=").Append(cfg.DrawMouse ? 1 : 0)
               .Append(Encoders.CaptureFilter(encKind))
-              .Append(',').Append(setpts).Append("[v]\" ");
+              .Append(',').Append(setpts).Append("[v]");
+            // Rauschunterdrückung je Spur (FFT-Entrauscher von FFmpeg, sehr wenig CPU)
+            for (int i = 0; i < engine.TrackCount && i < cfg.Tracks.Count; i++)
+                if (cfg.Tracks[i].Denoise) sb.Append(";[").Append(i).Append(":a]afftdn=nr=18:nf=-35:tn=1[d").Append(i).Append(']');
+            sb.Append("\" ");
             sb.Append("-map \"[v]\" ");
-            for (int i = 0; i < engine.TrackCount; i++) sb.Append("-map ").Append(i).Append(":a ");
+            for (int i = 0; i < engine.TrackCount; i++)
+            {
+                if (i < cfg.Tracks.Count && cfg.Tracks[i].Denoise) sb.Append("-map \"[d").Append(i).Append("]\" ");
+                else sb.Append("-map ").Append(i).Append(":a ");
+            }
 
             int b = Math.Max(2, cfg.BitrateMbps);
             sb.Append(Encoders.BufferArgs(encKind, cfg.Codec == "hevc", b, cfg.Fps * SegmentSeconds));

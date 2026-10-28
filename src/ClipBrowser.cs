@@ -15,7 +15,7 @@ namespace ReplayClip
         readonly Dictionary<string, Bitmap> cache = new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
         readonly LinkedList<string> lru = new LinkedList<string>();
         readonly HashSet<string> pending = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        const int Max = 500;
+        const int Max = 160;   // ~37 MB – mehr braucht keine Ansicht gleichzeitig
         public event Action<string> Loaded;
 
         public ThumbCache(Control uiOwner) { owner = uiOwner; }
@@ -32,6 +32,15 @@ namespace ReplayClip
             if (pending.Add(path))
                 Thumbnailer.Request(path, (video, thumb) => LoadAsync(video, thumb));
             return null;
+        }
+
+        /// <summary>Alles freigeben (Fenster ist im Infobereich) – wird bei Bedarf von der Platte neu geladen.</summary>
+        public void Clear()
+        {
+            foreach (var b in cache.Values) b.Dispose();
+            cache.Clear();
+            lru.Clear();
+            pending.Clear();
         }
 
         public void Invalidate(string path)
@@ -95,6 +104,110 @@ namespace ReplayClip
         public bool ListMode;
         public int TileSize = 1;
         public ThumbCache Thumbs;
+        /// <summary>Vorschau beim Überfahren (Maus links/rechts = vor/zurück im Clip).</summary>
+        public bool HoverPreview = true;
+        public Func<string> FfmpegPath;
+
+        // ---- Hover-Vorschau: Schlüsselbilder des Clips, mit der Maus durchscrubben ----
+        sealed class Strip { public readonly List<Bitmap> Frames = new List<Bitmap>(); public double Step = 2; public volatile bool Done, Dropped; public System.Diagnostics.Process Proc; }
+        readonly Dictionary<string, Strip> strips = new Dictionary<string, Strip>(StringComparer.OrdinalIgnoreCase);
+        readonly LinkedList<string> stripOrder = new LinkedList<string>();
+        const int StripW = 256, StripH = 144, StripMax = 32;
+        string scrubPath;
+        float scrubX = -1;
+        System.Threading.Timer scrubTimer;
+
+        void ScheduleStrip(ClipItem it)
+        {
+            if (scrubTimer != null) { scrubTimer.Dispose(); scrubTimer = null; }
+            scrubPath = it != null && !ListMode && HoverPreview && !it.Placeholder ? it.Path : null;
+            scrubX = -1;
+            if (scrubPath == null || strips.ContainsKey(scrubPath)) return;
+            string path = scrubPath;
+            double dur = it.Meta.Duration;
+            // erst nach kurzem Verweilen laden – beim schnellen Drüberfahren passiert nichts
+            scrubTimer = new System.Threading.Timer(_ =>
+            {
+                try { BeginInvoke(new Action(() => { if (scrubPath == path) StartStrip(path, dur); })); } catch { }
+            }, null, 350, System.Threading.Timeout.Infinite);
+        }
+
+        void StartStrip(string path, double dur)
+        {
+            string ff = FfmpegPath != null ? FfmpegPath() : null;
+            if (ff == null || strips.ContainsKey(path) || !File.Exists(path)) return;
+            var st = new Strip { Step = dur > 0 ? Math.Max(2.0, dur / StripMax) : 4 };
+            strips[path] = st;
+            stripOrder.AddFirst(path);
+            while (stripOrder.Count > 3) DropStrip(stripOrder.Last.Value);
+            new System.Threading.Thread(() => LoadStrip(ff, path, st)) { IsBackground = true, Priority = System.Threading.ThreadPriority.BelowNormal }.Start();
+        }
+
+        void DropStrip(string path)
+        {
+            Strip st;
+            stripOrder.Remove(path);
+            if (!strips.TryGetValue(path, out st)) return;
+            strips.Remove(path);
+            st.Dropped = true;
+            try { if (st.Proc != null && !st.Proc.HasExited) st.Proc.Kill(); } catch { }
+            lock (st.Frames) { foreach (var b in st.Frames) b.Dispose(); st.Frames.Clear(); }
+        }
+
+        void LoadStrip(string ff, string path, Strip st)
+        {
+            try
+            {
+                string step = st.Step.ToString("0.###", CultureInfo.InvariantCulture);
+                var p = Ffmpeg.Launch(ff, "-hide_banner -loglevel error -nostdin -skip_frame nokey -i " + Ffmpeg.Q(path) +
+                    " -an -sn -vf \"select='isnan(prev_selected_t)+gte(t-prev_selected_t\\," + step + ")',scale=" + StripW + ":" + StripH +
+                    ":force_original_aspect_ratio=decrease,pad=" + StripW + ":" + StripH + ":-1:-1\" -fps_mode passthrough -frames:v " + StripMax +
+                    " -f rawvideo -pix_fmt bgra pipe:1", false, null, false, true);
+                st.Proc = p;
+                var s = p.StandardOutput.BaseStream;
+                int size = StripW * StripH * 4;
+                var buf = new byte[size];
+                while (true)
+                {
+                    int got = 0;
+                    while (got < size) { int n = s.Read(buf, got, size - got); if (n <= 0) break; got += n; }
+                    if (got < size) break;
+                    var bmp = new Bitmap(StripW, StripH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                    var bd = bmp.LockBits(new Rectangle(0, 0, StripW, StripH), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb);
+                    for (int y = 0; y < StripH; y++) System.Runtime.InteropServices.Marshal.Copy(buf, y * StripW * 4, bd.Scan0 + y * bd.Stride, StripW * 4);
+                    bmp.UnlockBits(bd);
+                    bool keep;
+                    lock (st.Frames) { keep = !st.Dropped; if (keep) st.Frames.Add(bmp); }
+                    if (!keep) { bmp.Dispose(); try { p.Kill(); } catch { } break; }
+                    try { BeginInvoke(new Action(() => InvalidateItem(path))); } catch { }
+                }
+                p.WaitForExit(2000);
+            }
+            catch { }
+            st.Done = true;
+        }
+
+        /// <summary>Bild der Hover-Vorschau an der Mausposition (oder null).</summary>
+        Bitmap ScrubFrame(ClipItem it, out float frac)
+        {
+            frac = scrubX;
+            Strip st;
+            if (scrubX < 0 || it.Path != scrubPath || !strips.TryGetValue(it.Path, out st)) return null;
+            lock (st.Frames)
+            {
+                if (st.Frames.Count == 0) return null;
+                double dur = it.Meta.Duration > 0 ? it.Meta.Duration : st.Frames.Count * st.Step;
+                int idx = (int)(scrubX * dur / st.Step);
+                return st.Frames[Math.Max(0, Math.Min(st.Frames.Count - 1, idx))];
+            }
+        }
+
+        /// <summary>Speicher freigeben (z.B. wenn das Fenster in den Infobereich geht).</summary>
+        public void TrimMemory()
+        {
+            foreach (var p in new List<string>(stripOrder)) DropStrip(p);
+            ClearGfxCache();
+        }
         public string EmptyText = "Keine Clips.";
         readonly FxScrollBar vbar = new FxScrollBar();
         readonly HashSet<ClipItem> sel = new HashSet<ClipItem>();
@@ -389,7 +502,7 @@ namespace ReplayClip
             catch { bmp.Dispose(); return null; }
             scaled[key] = new Scaled { Src = src, Bmp = bmp, W = w, H = h };
             scaledOrder.AddFirst(key);
-            while (scaledOrder.Count > 260)
+            while (scaledOrder.Count > 120)
             {
                 string old = scaledOrder.Last.Value;
                 scaledOrder.RemoveLast();
@@ -429,7 +542,7 @@ namespace ReplayClip
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) ClearGfxCache();
+            if (disposing) { TrimMemory(); if (scrubTimer != null) scrubTimer.Dispose(); }
             base.Dispose(disposing);
         }
 
@@ -722,6 +835,24 @@ namespace ReplayClip
             int rp;
             bool rendering = renderPct.TryGetValue(it.Path, out rp);
             if (rendering) { DrawRendering(g, tr, rp, rad, false); h = 0; }
+            float frac = 0;
+            var sf = h > 0.3f && !rendering ? ScrubFrame(it, out frac) : null;
+            if (sf != null)
+            {
+                // Hover-Vorschau: Bild an der Mausposition + Fortschrittsbalken
+                using (var p = TopRound(tr, rad, false))
+                {
+                    var stc = g.Save();
+                    g.SetClip(p);
+                    g.DrawImage(sf, tr);
+                    g.Restore(stc);
+                }
+                int bh = S(3);
+                using (var b = new SolidBrush(Color.FromArgb(150, 0, 0, 0))) g.FillRectangle(b, tr.X, tr.Bottom - bh, tr.Width, bh);
+                using (var b = new SolidBrush(Theme.Accent)) g.FillRectangle(b, tr.X, tr.Bottom - bh, tr.Width * frac, bh);
+                if (it.Meta.Duration > 0) Badge(g, Dur(frac * it.Meta.Duration), Theme.Medium(8f), tr, false, true, Color.FromArgb(200, 10, 10, 12), Color.White, S(7));
+                h = Math.Min(h, 0.01f); // kein Play-Knopf über der Vorschau
+            }
             if (h > 0.01f)
             {
                 using (var b = new LinearGradientBrush(new RectangleF(tr.X, tr.Y + tr.Height * 0.35f, tr.Width, tr.Height * 0.65f + 1), Color.FromArgb(0, 0, 0, 0), Color.FromArgb((int)(150 * h), 0, 0, 0), 90f))
@@ -923,12 +1054,19 @@ namespace ReplayClip
             var it = i >= 0 ? Items[i] : null;
             if (it != hoverItem)
             {
+                ScheduleStrip(it);
                 hoverItem = it;
                 if (it != null && !hoverVal.ContainsKey(it)) hoverVal[it] = 0;
                 if (!Anim.Enabled) { hoverVal.Clear(); if (it != null) hoverVal[it] = 1; Invalidate(); }
                 Animate();
             }
             Cursor = (i >= 0 && StarRect(ItemRect(i)).Contains(e.Location)) ? Cursors.Hand : Cursors.Default;
+            if (it != null && it.Path == scrubPath && strips.ContainsKey(scrubPath))
+            {
+                var r = ItemRect(i);
+                float nx = Math.Max(0, Math.Min(1, (e.X - r.X) / (float)Math.Max(1, r.Width)));
+                if (Math.Abs(nx - scrubX) > 0.002f) { scrubX = nx; InvalidateItem(it.Path); }
+            }
             if (e.Button == MouseButtons.Left && downOnItem && sel.Count > 0 &&
                 (Math.Abs(e.X - downPt.X) > S(8) || Math.Abs(e.Y - downPt.Y) > S(8)))
             {
@@ -942,6 +1080,7 @@ namespace ReplayClip
 
         protected override void OnMouseLeave(EventArgs e)
         {
+            ScheduleStrip(null);
             hoverItem = null;
             Animate();
             if (!Anim.Enabled) { hoverVal.Clear(); Invalidate(); }

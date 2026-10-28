@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -49,6 +49,7 @@ namespace ReplayClip
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder sb, ref int size);
         [DllImport("kernel32.dll")] static extern void GetSystemTimePreciseAsFileTime(out long fileTime);
         [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
+        [DllImport("kernel32.dll")] public static extern bool SetProcessWorkingSetSize(IntPtr proc, IntPtr min, IntPtr max);
         [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
 
         /// <summary>UTC-Zeit in Mikrosekunden seit 1970 (gleiche Basis wie av_gettime() in FFmpeg).</summary>
