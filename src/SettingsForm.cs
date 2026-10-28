@@ -25,6 +25,7 @@ namespace ReplayClip
         void AppearanceChanged();
         void RestartApp();
         void OfferUpdate(UpdateInfo u, bool fromSettings);
+        UpdateInfo PendingUpdate { get; }
     }
 
     public static class Shell
@@ -103,7 +104,8 @@ namespace ReplayClip
         Panel current, pageAudio, hotkeyPage;
 
         // Aufnahme
-        FxCombo cmbMonitor, cmbFps, cmbCodec, cmbBitrate;
+        FxCombo cmbMonitor, cmbFps, cmbCodec, cmbBitrate, cmbEncoder;
+        Label lblEncoder;
         FxNumber numMinutes;
         FxToggle chkMouse, chkReset;
         Label lblEstimate;
@@ -204,7 +206,8 @@ namespace ReplayClip
             AddPage("Aussehen", "color", "Farben, Schrift und Animationen", BuildLookPage());
             AddPage("Sound & Hinweise", "bell", "Was passiert, wenn ein Clip gespeichert wurde", BuildSoundPage());
             AddPage("Speicher & FFmpeg", "storage", "Puffer-Ordner und Encoder", BuildSystemPage());
-            AddPage("Allgemein", "general", "Start-Verhalten und Updates", BuildGeneralPage());
+            AddPage("Allgemein", "general", "Start-Verhalten", BuildGeneralPage());
+            AddPage("Updates", "refresh", "Neue Versionen suchen und installieren", BuildUpdatesPage());
             AddPage("Über", "info", "Version und Diagnose", BuildAboutPage());
 
             var navItems = new List<NavEntry> { new NavEntry { Header = true, Text = "Einstellungen" } };
@@ -287,9 +290,13 @@ namespace ReplayClip
             cmbFps = Ui.Combo(Px(140));
             foreach (var f in new[] { 30, 60, 120, 144 }) cmbFps.Items.Add(f + " FPS");
             Ui.Row(video, "Bildrate", cmbFps);
+            cmbEncoder = Ui.Combo(Px(340));
+            foreach (var n in Encoders.PrefNames) cmbEncoder.Items.Add(n);
+            lblEncoder = new Label { AutoSize = true, ForeColor = Theme.TextDim, Margin = new Padding(Px(10), Px(8), 0, 0), Tag = "keep" };
+            Ui.Row(video, "Encoder", Ui.Flow(cmbEncoder, lblEncoder));
             cmbCodec = Ui.Combo(Px(340));
-            cmbCodec.Items.Add("H.264 (NVENC) – überall abspielbar");
-            cmbCodec.Items.Add("HEVC / H.265 (NVENC) – kleinere Dateien");
+            cmbCodec.Items.Add("H.264 – überall abspielbar");
+            cmbCodec.Items.Add("HEVC / H.265 – kleinere Dateien");
             Ui.Row(video, "Codec", cmbCodec);
             cmbBitrate = Ui.Combo(Px(170));
             foreach (var b in new[] { 10, 15, 20, 30, 40, 50, 80 }) cmbBitrate.Items.Add(b + " Mbit/s");
@@ -314,7 +321,8 @@ namespace ReplayClip
                 if (m != null && !loading) { settings.MonitorIndex = m.Index; MarkRestartNeeded(); }
             };
             cmbFps.SelectedIndexChanged += (s, e) => { if (!loading) { settings.Fps = new[] { 30, 60, 120, 144 }[cmbFps.SelectedIndex]; UpdateEstimate(); MarkRestartNeeded(); } };
-            cmbCodec.SelectedIndexChanged += (s, e) => { if (!loading) { settings.Codec = cmbCodec.SelectedIndex == 1 ? "hevc" : "h264"; MarkRestartNeeded(); } };
+            cmbCodec.SelectedIndexChanged += (s, e) => { if (!loading) { settings.Codec = cmbCodec.SelectedIndex == 1 ? "hevc" : "h264"; MarkRestartNeeded(); DetectEncoder(); } };
+            cmbEncoder.SelectedIndexChanged += (s, e) => { if (!loading) { settings.Encoder = Encoders.Prefs[Math.Max(0, cmbEncoder.SelectedIndex)]; MarkRestartNeeded(); DetectEncoder(); } };
             cmbBitrate.SelectedIndexChanged += (s, e) => { if (!loading) { settings.BitrateMbps = new[] { 10, 15, 20, 30, 40, 50, 80 }[cmbBitrate.SelectedIndex]; UpdateEstimate(); MarkRestartNeeded(); } };
             numMinutes.ValueChanged += (s, e) => { if (!loading) { settings.BufferMinutes = (int)numMinutes.Value; settings.Save(); UpdateEstimate(); } };
             chkMouse.CheckedChanged += (s, e) => { if (!loading) { settings.DrawMouse = chkMouse.Checked; MarkRestartNeeded(); } };
@@ -690,15 +698,75 @@ namespace ReplayClip
             chkAutoBuffer = new FxToggle { Text = "Replay-Buffer beim Programmstart automatisch aktivieren" };
             chkMinimized = new FxToggle { Text = "Beim Start nur im Infobereich (Tray) starten" };
             foreach (var c in new[] { chkAutostart, chkAutoBuffer, chkMinimized }) Ui.Row(beh, null, c);
-            var upd = Ui.Grid();
-            chkUpdate = new FxToggle { Text = "Automatisch nach Updates suchen (beim Start und alle 6 Stunden)" };
-            Ui.Row(upd, null, chkUpdate);
+            Stack(page, Ui.Group("Verhalten", beh));
+            chkAutostart.CheckedChanged += (s, e) => { if (!loading) SetAutostart(chkAutostart.Checked); };
+            chkAutoBuffer.CheckedChanged += (s, e) => { if (!loading) { settings.StartBufferOnLaunch = chkAutoBuffer.Checked; settings.Save(); } };
+            chkMinimized.CheckedChanged += (s, e) => { if (!loading) { settings.StartMinimized = chkMinimized.Checked; settings.Save(); } };
+            return page;
+        }
+
+        int detectToken;
+
+        /// <summary>Im Hintergrund testen, welcher Encoder mit der aktuellen Auswahl tatsächlich benutzt wird.</summary>
+        void DetectEncoder()
+        {
+            string ff = Ffmpeg.Find(settings);
+            if (ff == null) { lblEncoder.ForeColor = Theme.TextDim; lblEncoder.Text = "FFmpeg fehlt noch"; return; }
+            int token = ++detectToken;
+            string pref = settings.Encoder;
+            bool wantHevc = settings.Codec == "hevc";
+            lblEncoder.ForeColor = Theme.TextDim;
+            lblEncoder.Text = "prüfe Grafikkarte …";
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                bool hevc = wantHevc;
+                var k = Encoders.Resolve(ff, pref, ref hevc);
+                OnUi(() =>
+                {
+                    if (token != detectToken || IsDisposed) return;
+                    bool fallback = pref != "auto" && Encoders.Prefs[(int)k + 1] != pref;
+                    string txt = (fallback ? "nicht verfügbar → " : "✓ ") + Encoders.Label(k) + (wantHevc && !hevc ? " (nur H.264)" : "");
+                    if (k == EncKind.Cpu) txt += " – höhere CPU-Last";
+                    lblEncoder.ForeColor = fallback || k == EncKind.Cpu ? Theme.Warning : Theme.Accent;
+                    lblEncoder.Text = txt;
+                });
+            });
+        }
+
+        UpdateInfo foundUpdate;
+        Label lblUpdNotes;
+        FxButton btnInstall;
+        Card updCard;
+
+        Panel BuildUpdatesPage()
+        {
+            var page = ScrollPage();
+            var st = Ui.Grid();
+            var ver = new Label { Text = "ReplayClip " + Program.Version, AutoSize = true, Font = Theme.Semi(15f), ForeColor = Theme.Accent, Tag = "keep" };
+            Ui.Row(st, "Installiert", ver);
+            lblUpdate = new Label { AutoSize = true, ForeColor = Theme.TextDim, MaximumSize = new Size(Px(560), 0), Margin = new Padding(0, Px(6), 0, 0), Tag = "keep" };
+            Ui.Row(st, "Status", lblUpdate);
+            Ui.Row(st, "", Ui.Flow(Ui.Button("refresh", "Jetzt nach Updates suchen", (s, e) => CheckUpdateNow()),
+                Ui.Button("open", "Alle Versionen auf GitHub", (s, e) => Shell.OpenFile("https://github.com/" + settings.UpdateRepo + "/releases"))));
+
+            // Neue Version (nur sichtbar, wenn gefunden)
+            var nv = Ui.Grid();
+            lblUpdNotes = new Label { AutoSize = true, ForeColor = Theme.Text, MaximumSize = new Size(Px(600), 0), Tag = "keep" };
+            Ui.Row(nv, null, lblUpdNotes);
+            btnInstall = new FxButton { Text = "Jetzt aktualisieren", IconName = "save", Kind = FxKind.Primary, AutoSize = true };
+            btnInstall.Click += (s, e) => { if (foundUpdate != null) host.OfferUpdate(foundUpdate, true); };
+            Ui.Row(nv, null, btnInstall);
+            updCard = Ui.Group("Neue Version verfügbar", nv);
+            updCard.Visible = false;
+
+            var opt = Ui.Grid();
+            chkUpdate = new FxToggle { Text = "Automatisch nach Updates suchen (beim Start und alle 6 Stunden) und Bescheid geben" };
+            Ui.Row(opt, null, chkUpdate);
             txtRepo = new TextBox();
-            Ui.Row(upd, "GitHub-Repo", Ui.Field(txtRepo, Px(300), "Besitzer/ReplayClip", "open"));
-            lblUpdate = new Label { AutoSize = true, ForeColor = Theme.TextDim, MaximumSize = new Size(Px(420), 0), Margin = new Padding(Px(10), Px(8), 0, 0), Tag = "keep" };
-            Ui.Row(upd, "", Ui.Flow(Ui.Button("refresh", "Jetzt nach Updates suchen", (s, e) => CheckUpdateNow()), lblUpdate));
-            Ui.Row(upd, null, Dim("Updates kommen als Release aus dem GitHub-Repository. ReplayClip lädt sie auf Wunsch selbst herunter und startet neu.", 560));
-            Stack(page, Ui.Group("Verhalten", beh), Ui.Group("Updates", upd));
+            Ui.Row(opt, "GitHub-Repo", Ui.Field(txtRepo, Px(320), "Besitzer/ReplayClip", "open"));
+            Ui.Row(opt, null, Dim("Neue Versionen kommen als Release aus diesem GitHub-Repository. ReplayClip lädt sie auf Wunsch selbst herunter, tauscht die Programmdatei aus und startet neu.", 600));
+
+            Stack(page, Ui.Group("Version", st), updCard, Ui.Group("Einstellungen", opt));
             chkUpdate.CheckedChanged += (s, e) => { if (!loading) { settings.UpdateCheck = chkUpdate.Checked; settings.Save(); } };
             txtRepo.Leave += (s, e) =>
             {
@@ -707,26 +775,45 @@ namespace ReplayClip
                 txtRepo.Text = r;
                 if (r != settings.UpdateRepo) { settings.UpdateRepo = r; settings.SkipUpdate = ""; settings.Save(); }
             };
-            chkAutostart.CheckedChanged += (s, e) => { if (!loading) SetAutostart(chkAutostart.Checked); };
-            chkAutoBuffer.CheckedChanged += (s, e) => { if (!loading) { settings.StartBufferOnLaunch = chkAutoBuffer.Checked; settings.Save(); } };
-            chkMinimized.CheckedChanged += (s, e) => { if (!loading) { settings.StartMinimized = chkMinimized.Checked; settings.Save(); } };
+            ShowUpdateStatus(host.PendingUpdate, null);
             return page;
+        }
+
+        void ShowUpdateStatus(UpdateInfo u, string err)
+        {
+            if (err != null) { lblUpdate.ForeColor = Theme.Danger; lblUpdate.Text = err; return; }
+            DateTime last;
+            string when = DateTime.TryParse(settings.LastUpdateCheck, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out last)
+                ? "Zuletzt gesucht: " + last.ToLocalTime().ToString("dd.MM.yyyy HH:mm", CultureInfo.CurrentCulture) : "Noch nicht gesucht.";
+            foundUpdate = u;
+            if (u == null)
+            {
+                lblUpdate.ForeColor = settings.LastUpdateCheck.Length > 0 ? Theme.Accent : Theme.TextDim;
+                lblUpdate.Text = (settings.LastUpdateCheck.Length > 0 ? "✓  Du hast die neueste Version.   " : "") + when;
+                updCard.Visible = false;
+                return;
+            }
+            lblUpdate.ForeColor = Theme.Accent;
+            lblUpdate.Text = "Version " + u.Display + " ist verfügbar.   " + when;
+            string notes = (u.Notes ?? "").Trim();
+            if (notes.Length > 1200) notes = notes.Substring(0, 1200) + " …";
+            lblUpdNotes.Text = "ReplayClip " + u.Display + "\n\n" + (notes.Length > 0 ? notes : "(keine Beschreibung)");
+            btnInstall.Text = "Auf " + u.Display + " aktualisieren";
+            updCard.Visible = true;
         }
 
         void CheckUpdateNow()
         {
             string r = txtRepo.Text.Trim().Replace("https://github.com/", "").Trim('/');
             if (r.Length > 0 && r != settings.UpdateRepo) { settings.UpdateRepo = r; settings.Save(); }
-            if (!Updater.RepoValid(settings.UpdateRepo)) { lblUpdate.ForeColor = Theme.Danger; lblUpdate.Text = "Bitte zuerst das GitHub-Repo eintragen (z.B. name/ReplayClip)."; return; }
+            if (!Updater.RepoValid(settings.UpdateRepo)) { ShowUpdateStatus(null, "Bitte zuerst das GitHub-Repo eintragen (z.B. name/ReplayClip)."); return; }
             lblUpdate.ForeColor = Theme.TextDim;
             lblUpdate.Text = "Suche …";
             Updater.CheckAsync(this, settings.UpdateRepo, (u, err) =>
             {
-                if (err != null) { lblUpdate.ForeColor = Theme.Danger; lblUpdate.Text = err; return; }
-                if (u == null) { lblUpdate.ForeColor = Theme.Accent; lblUpdate.Text = "✓  Du hast die neueste Version (" + Program.Version + ")."; return; }
-                lblUpdate.ForeColor = Theme.Accent;
-                lblUpdate.Text = "Version " + u.Display + " verfügbar.";
-                host.OfferUpdate(u, true);
+                if (IsDisposed) return;
+                if (err == null) { settings.LastUpdateCheck = DateTime.UtcNow.ToString("o"); settings.Save(); }
+                ShowUpdateStatus(u, err);
             });
         }
 
@@ -736,7 +823,7 @@ namespace ReplayClip
             var g = Ui.Grid();
             var ver = new Label { Text = "ReplayClip " + Program.Version, AutoSize = true, Font = Theme.Semi(16f), ForeColor = Theme.Accent, Tag = "keep" };
             Ui.Row(g, null, ver);
-            Ui.Row(g, null, Dim("Replay-Buffer mit NVENC, getrennten Tonspuren, Bibliothek mit Tags und Schnitt-Editor.\nDie Versionsnummer steht auch in der Titelleiste und oben neben dem Namen – so siehst du, dass die richtige Datei läuft.", 600));
+            Ui.Row(g, null, Dim("Replay-Buffer mit Grafikkarten-Encoder (NVIDIA, AMD, Intel), getrennten Tonspuren, Bibliothek mit Tags und Schnitt-Editor.\nDie Versionsnummer steht auch in der Titelleiste und oben neben dem Namen – so siehst du, dass die richtige Datei läuft.", 600));
             Ui.Row(g, "Programmdatei", new Label { Text = Application.ExecutablePath, AutoSize = true, MaximumSize = new Size(Px(560), 0) });
             Ui.Row(g, "Einstellungen", Ui.Flow(new Label { Text = Settings.AppDataDir, AutoSize = true, Margin = new Padding(0, Px(8), Px(8), 0) },
                 Ui.IconButton("open", "Ordner öffnen", (s, e) => Shell.OpenFolder(Settings.AppDataDir))));
@@ -758,6 +845,8 @@ namespace ReplayClip
             LoadMonitors();
             cmbFps.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { 30, 60, 120, 144 }, settings.Fps));
             cmbCodec.SelectedIndex = settings.Codec == "hevc" ? 1 : 0;
+            cmbEncoder.SelectedIndex = Math.Max(0, Array.IndexOf(Encoders.Prefs, settings.Encoder));
+            DetectEncoder();
             int bi = Array.IndexOf(new[] { 10, 15, 20, 30, 40, 50, 80 }, settings.BitrateMbps);
             cmbBitrate.SelectedIndex = bi < 0 ? 3 : bi;
             numMinutes.Value = Math.Max(1, Math.Min(20, settings.BufferMinutes));
@@ -1235,6 +1324,7 @@ namespace ReplayClip
             sb.AppendLine("FFmpeg: " + (Ffmpeg.Find(settings) ?? "nicht gefunden"));
             sb.AppendLine("Mikrofon-Datenschutz blockiert: " + (Native.MicPrivacyBlocked() ? "JA" : "nein"));
             sb.AppendLine("Buffer aktiv: " + (host.Recorder.IsActive ? "ja" : "nein") + ", Test aktiv: " + (testEngine != null ? "ja" : "nein"));
+            sb.AppendLine("Encoder: Einstellung " + settings.Encoder + ", benutzt " + (host.Recorder.EncoderLabel.Length > 0 ? host.Recorder.EncoderLabel : (Encoders.Last.HasValue ? Encoders.Label(Encoders.Last.Value) : "?")));
             sb.AppendLine("Puffer nach Speichern leeren: " + (settings.ResetBufferAfterSave ? "ja" : "nein"));
             var err = host.Recorder.AudioError;
             if (!string.IsNullOrEmpty(err)) sb.AppendLine("Letzter Audiofehler: " + err);
@@ -1265,7 +1355,7 @@ namespace ReplayClip
             string f = Ffmpeg.Find(settings);
             txtFfmpeg.Text = f ?? "";
             lblFfmpegState.Text = f != null
-                ? "Gefunden. Aufnahme nutzt ddagrab (Bildschirm per GPU) + NVENC deiner GeForce – die CPU bleibt fast unbelastet."
+                ? "Gefunden. Aufnahme nutzt ddagrab (Bildschirm per GPU) + den Encoder deiner Grafikkarte – die CPU bleibt fast unbelastet."
                 : "Nicht gefunden. Klicke auf „Herunterladen“ (ca. 200 MB, offizieller Windows-Build von GitHub/BtbN) oder wähle eine vorhandene ffmpeg.exe (mind. Version 6).";
             lblFfmpegState.ForeColor = f != null ? Theme.TextDim : Theme.Danger;
         }

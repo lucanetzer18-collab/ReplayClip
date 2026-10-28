@@ -6,7 +6,7 @@ Schlanker Replay-Buffer für Windows 11 – wie NVIDIA Instant Replay, aber mit 
 ## Funktionen
 
 - Nimmt dauerhaft einen Monitor auf und behält die letzten 1–20 Minuten (Hotkey speichert, Standard **Alt+F10**)
-- Bild über Desktop Duplication + **NVENC** (H.264 oder HEVC) – kaum CPU-Last
+- Bild über Desktop Duplication + Grafikkarten-Encoder: **NVIDIA** (NVENC), **AMD** (AMF), **Intel/Onboard** (Quick Sync) – oder ohne Grafikkarte über den Prozessor
 - Bis zu 6 **getrennte Tonspuren**, z.B. Discord / restlicher PC-Sound / Mikrofon, Lautstärke je Spur bis 500 %
 - **Bibliothek**: Ordner je Spiel, Kachel- und Listenansicht, Tags mit eigenen Farben, Schnell-Tags 1–9, Favoriten, Drag & Drop nach Discord
 - **Editor**: kürzen, Spuren stummschalten, Lautstärke, Export als Mix und/oder einzelne Spuren – rendert im Hintergrund
@@ -18,13 +18,13 @@ Schlanker Replay-Buffer für Windows 11 – wie NVIDIA Instant Replay, aber mit 
 2. In einen eigenen Ordner entpacken (z.B. `C:\Tools\ReplayClip`) und `ReplayClip.exe` starten.
 3. Fehlt FFmpeg, bietet ReplayClip den Download direkt an.
 
-Voraussetzungen: Windows 11, NVIDIA-Grafikkarte mit aktuellem Treiber, .NET Framework 4.8 (bei Windows 11 dabei).
+Voraussetzungen: Windows 10 (ab 20348) / 11, .NET Framework 4.8 (bei Windows 11 dabei). Grafikkarte empfohlen (NVIDIA, AMD oder Intel mit aktuellem Treiber), geht aber auch ohne.
 Details stehen in [LIESMICH.txt](LIESMICH.txt).
 
 ## Updates
 
 ReplayClip prüft beim Start und alle 6 Stunden, ob es ein neueres Release gibt, und aktualisiert sich auf Wunsch selbst
-(Einstellungen › Allgemein › Updates).
+(Einstellungen › Updates). Bei einer neuen Version gibt es einen Hinweis im Fenster und eine Windows-Mitteilung.
 
 ## Selbst bauen
 

@@ -3,6 +3,13 @@
 Neue Einträge immer oben einfügen. Der Abschnitt mit der passenden Versionsnummer wird beim Release
 automatisch als Beschreibung übernommen und in der App beim Update angezeigt.
 
+## 1.5.1
+- Läuft jetzt auch mit **AMD-Grafikkarten** (AMF), **Intel-/Onboard-Grafik** (Quick Sync) und **ganz ohne Grafikkarte** (Prozessor, x264).
+  Einstellungen › Aufnahme › Encoder: „Automatisch erkennen“ testet, was auf dem PC funktioniert, und zeigt das Ergebnis an.
+- Editor-Export nutzt ebenfalls den passenden Encoder (mit Prozessor als Rückfallebene).
+- Eigene Einstellungsseite **Updates**: installierte Version, letzte Suche, Neuerungen der neuen Version und „Jetzt aktualisieren“.
+- **Mitteilung bei neuer Version**: Hinweis im Fenster und Windows-Mitteilung, wenn ReplayClip im Hintergrund läuft.
+
 ## 1.5.0
 - Updates direkt in der App: ReplayClip prüft GitHub auf neue Versionen, zeigt die Neuerungen und aktualisiert sich auf Wunsch selbst (Einstellungen › Allgemein › Updates).
 - Projekt auf GitHub: automatischer Build und Release, sobald eine neue Versionsnummer hochgeladen wird.

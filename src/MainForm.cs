@@ -1132,7 +1132,7 @@ namespace ReplayClip
                 if (!balloonShown)
                 {
                     balloonShown = true;
-                    tray.ShowBalloonTip(3000, "ReplayClip läuft weiter", "Das Programm ist im Infobereich. Speichern mit " + HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey) + ".", ToolTipIcon.Info);
+                    updateBalloon = false; tray.ShowBalloonTip(3000, "ReplayClip läuft weiter", "Das Programm ist im Infobereich. Speichern mit " + HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey) + ".", ToolTipIcon.Info);
                 }
                 return;
             }
@@ -1239,14 +1239,17 @@ namespace ReplayClip
 
         UpdateInfo pendingUpdate;
         bool updating;
+        public UpdateInfo PendingUpdate { get { return pendingUpdate; } }
 
         void AutoUpdateCheck()
         {
             if (!settings.UpdateCheck || updating || !Updater.RepoValid(settings.UpdateRepo)) return;
             Updater.CheckAsync(this, settings.UpdateRepo, (u, err) =>
             {
+                if (err == null) { settings.LastUpdateCheck = DateTime.UtcNow.ToString("o"); settings.Save(); }
                 if (u == null || u.Tag == settings.SkipUpdate) return;
                 OfferUpdate(u, false);
+                NotifyUpdate(u);
             });
         }
 
@@ -1255,6 +1258,36 @@ namespace ReplayClip
             pendingUpdate = u;
             if (fromSettings) { AskInstallUpdate(); return; }
             ShowBanner("ReplayClip " + u.Display + " ist verfügbar (du hast " + Program.Version + ").", "Ansehen & aktualisieren", AskInstallUpdate, true);
+        }
+
+        /// <summary>Mitteilung über eine neue Version: im Fenster (Hinweis) und als Windows-Mitteilung, wenn ReplayClip im Hintergrund ist.</summary>
+        void NotifyUpdate(UpdateInfo u)
+        {
+            bool inFront = Visible && WindowState != FormWindowState.Minimized && ContainsFocus;
+            if (Visible) Toast.Show(this, "Neue Version " + u.Display, "Klicken zum Ansehen und Aktualisieren", "refresh", Theme.Accent, null, AskInstallUpdate);
+            if (!inFront && settings.NotifiedUpdate != u.Tag)
+            {
+                settings.NotifiedUpdate = u.Tag;
+                settings.Save();
+                try
+                {
+                    tray.BalloonTipClicked -= OnUpdateBalloonClicked;
+                    tray.BalloonTipClicked += OnUpdateBalloonClicked;
+                    updateBalloon = true;
+                    tray.ShowBalloonTip(8000, "ReplayClip " + u.Display + " ist verfügbar", "Klicken zum Ansehen und Aktualisieren (du hast " + Program.Version + ").", ToolTipIcon.Info);
+                }
+                catch { }
+            }
+        }
+
+        bool updateBalloon;
+
+        void OnUpdateBalloonClicked(object s, EventArgs e)
+        {
+            if (!updateBalloon) return;
+            updateBalloon = false;
+            ShowFromTray();
+            AskInstallUpdate();
         }
 
         void AskInstallUpdate()
@@ -1348,7 +1381,7 @@ namespace ReplayClip
             if (!on && !string.IsNullOrEmpty(msg) && msg != "Replay-Buffer gestoppt" && !msg.Contains("starte neu"))
             {
                 ShowBanner(msg.Replace("\n", "  ·  "), "Erneut versuchen", StartBuffer);
-                if (settings.NotifyBalloon) tray.ShowBalloonTip(4000, "ReplayClip", msg, ToolTipIcon.Warning);
+                if (settings.NotifyBalloon) { updateBalloon = false; tray.ShowBalloonTip(4000, "ReplayClip", msg, ToolTipIcon.Warning); }
                 SoundFx.PlayError(settings);
             }
             if (on) Toast.Show(this, "Replay-Buffer läuft", "Speichern mit " + HotkeyBox.Format(settings.SaveHotkeyMods, settings.SaveHotkeyKey) +
@@ -1382,7 +1415,7 @@ namespace ReplayClip
             header.Flash();
             if (settings.OverlayToast && !(ContainsFocus && Visible))
                 OverlayToast.ShowMessage("Clip gespeichert", game + (dur.Length > 0 ? "  ·  " + dur : ""), Theme.Accent, CaptureScreen(), settings.OverlayPos);
-            if (settings.NotifyBalloon) tray.ShowBalloonTip(2500, "Clip gespeichert", game + " › " + Path.GetFileName(file), ToolTipIcon.Info);
+            if (settings.NotifyBalloon) { updateBalloon = false; tray.ShowBalloonTip(2500, "Clip gespeichert", game + " › " + Path.GetFileName(file), ToolTipIcon.Info); }
 
             // In-App-Hinweis mit Vorschaubild (sobald es da ist)
             bool shown = false;
@@ -1416,7 +1449,7 @@ namespace ReplayClip
             if (settings.OverlayToast && !(ContainsFocus && Visible))
                 OverlayToast.ShowMessage("Clip nicht gespeichert", msg, Theme.Danger, CaptureScreen(), settings.OverlayPos);
             Toast.Show(this, "Clip nicht gespeichert", msg, "error", Theme.Danger);
-            if (settings.NotifyBalloon) tray.ShowBalloonTip(4000, "Clip nicht gespeichert", msg, ToolTipIcon.Error);
+            if (settings.NotifyBalloon) { updateBalloon = false; tray.ShowBalloonTip(4000, "Clip nicht gespeichert", msg, ToolTipIcon.Error); }
             UpdateStatus();
         }
 

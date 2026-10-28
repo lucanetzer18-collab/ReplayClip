@@ -134,6 +134,12 @@ namespace ReplayClip
             sessionDir = Path.Combine(cfg.BufferDir, "session_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff"));
             Directory.CreateDirectory(sessionDir);
 
+            // Encoder passend zur Hardware (NVIDIA / AMD / Intel / Prozessor)
+            bool hevc = cfg.Codec == "hevc";
+            encKind = Encoders.Resolve(ffPath, cfg.Encoder, ref hevc);
+            cfg.Codec = hevc ? "hevc" : "h264";
+            EncoderLabel = Encoders.Label(encKind) + (hevc ? " · HEVC" : " · H.264");
+
             engine = new AudioEngine(cfg.Tracks, "ReplayClip_" + Process.GetCurrentProcess().Id + "_" + Environment.TickCount);
             engine.Start();
             long startUs = engine.StartClock();
@@ -158,6 +164,10 @@ namespace ReplayClip
             }
         }
 
+        EncKind encKind = EncKind.Nvidia;
+        /// <summary>Welcher Encoder gerade benutzt wird (für Anzeige/Diagnose).</summary>
+        public string EncoderLabel = "";
+
         string BuildArgs(long startUs)
         {
             var ci = CultureInfo.InvariantCulture;
@@ -174,16 +184,13 @@ namespace ReplayClip
             sb.Append("-filter_complex \"ddagrab=output_idx=").Append(cfg.MonitorIndex)
               .Append(":framerate=").Append(cfg.Fps)
               .Append(":draw_mouse=").Append(cfg.DrawMouse ? 1 : 0)
+              .Append(Encoders.CaptureFilter(encKind))
               .Append(',').Append(setpts).Append("[v]\" ");
             sb.Append("-map \"[v]\" ");
             for (int i = 0; i < engine.TrackCount; i++) sb.Append("-map ").Append(i).Append(":a ");
 
             int b = Math.Max(2, cfg.BitrateMbps);
-            string enc = cfg.Codec == "hevc" ? "hevc_nvenc" : "h264_nvenc";
-            sb.Append("-c:v ").Append(enc).Append(" -preset p4 -tune hq -rc vbr ");
-            sb.AppendFormat(ci, "-b:v {0}M -maxrate {1}M -bufsize {2}M ", b, b * 3 / 2, b * 2);
-            sb.Append("-g ").Append(cfg.Fps * SegmentSeconds).Append(' ');
-            if (cfg.Codec != "hevc") sb.Append("-profile:v high ");
+            sb.Append(Encoders.BufferArgs(encKind, cfg.Codec == "hevc", b, cfg.Fps * SegmentSeconds));
             if (engine.TrackCount > 0) sb.Append("-c:a aac -b:a ").Append(cfg.AudioBitrateK).Append("k ");
             sb.Append("-f segment -segment_time ").Append(SegmentSeconds)
               .Append(" -segment_format mpegts -segment_start_number 0 -reset_timestamps 0 ")

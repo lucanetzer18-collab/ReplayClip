@@ -605,7 +605,7 @@ namespace ReplayClip
             r1.Controls.Add(rbMixPlus);
             r1.Controls.Add(rbMix);
             r1.Controls.Add(rbSeparate);
-            chkPrecise = new FxToggle { Text = "Bildgenau schneiden (Video wird mit NVENC neu kodiert – dauert nur Sekunden). Aus = verlustfrei, springt aber auf Keyframes (alle 2 s).", Checked = true, MaximumSize = new Size(Px(900), 0), Margin = new Padding(0, Px(8), 0, Px(4)) };
+            chkPrecise = new FxToggle { Text = "Bildgenau schneiden (Video wird mit der Grafikkarte neu kodiert – dauert nur Sekunden). Aus = verlustfrei, springt aber auf Keyframes (alle 2 s).", Checked = true, MaximumSize = new Size(Px(900), 0), Margin = new Padding(0, Px(8), 0, Px(4)) };
             var r3 = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, Px(6), 0, 0) };
             btnSaveNew = new FxButton { Text = "Als neuen Clip speichern", IconName = "save", Kind = FxKind.Primary, AutoSize = true, Height = Px(38) };
             btnSaveNew.Click += (s, e) => Export(false);
@@ -1006,7 +1006,7 @@ namespace ReplayClip
             return p;
         }
 
-        string BuildExportArgs(string outPath, bool useNvenc)
+        string BuildExportArgs(string outPath, string videoArgs)
         {
             var ci = CultureInfo.InvariantCulture;
             var mode = rbSeparate.Checked ? ExportAudioMode.Separate : (rbMix.Checked ? ExportAudioMode.MixOnly : ExportAudioMode.MixPlusSeparate);
@@ -1022,21 +1022,7 @@ namespace ReplayClip
             if (graph.Length > 0) sb.Append("-filter_complex \"").Append(graph).Append("\" ");
             sb.Append("-map 0:v:0 ");
             foreach (var l in labels) sb.Append("-map \"").Append(l).Append("\" ");
-            bool hevc = info.VideoCodec.StartsWith("hevc") || info.VideoCodec.StartsWith("h265");
-            if (chkPrecise.Checked)
-            {
-                if (useNvenc)
-                {
-                    sb.Append(hevc ? "-c:v hevc_nvenc -tag:v hvc1 " : "-c:v h264_nvenc -profile:v high ");
-                    sb.Append("-preset p5 -tune hq -rc vbr -cq 19 -b:v 0 ");
-                }
-                else
-                {
-                    sb.Append(hevc ? "-c:v libx265 -crf 22 -tag:v hvc1 " : "-c:v libx264 -crf 18 ");
-                    sb.Append("-preset veryfast ");
-                }
-                sb.Append("-pix_fmt yuv420p ");
-            }
+            if (chkPrecise.Checked) sb.Append(videoArgs);
             else sb.Append("-c:v copy -avoid_negative_ts make_zero ");
             if (labels.Count > 0) sb.Append("-c:a aac -b:a 192k ");
             else sb.Append("-an ");
@@ -1064,8 +1050,11 @@ namespace ReplayClip
             string target = overwrite ? file : NewFileName();
             // Immer erst in eine versteckte Temp-Datei rendern – die Bibliothek sieht den Clip erst, wenn er fertig ist.
             string outPath = Path.Combine(Path.GetDirectoryName(file), "~replayclip_edit_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".mp4");
-            string argsNv = BuildExportArgs(outPath, true);
-            string argsSw = BuildExportArgs(outPath, false);
+            // Encoder (NVIDIA/AMD/Intel/Prozessor) wird im Hintergrund bestimmt – Platzhalter jetzt, Optionen später
+            const string VENC = "\u0001VENC\u0001";
+            string argsTemplate = BuildExportArgs(outPath, VENC);
+            bool srcHevc = info.VideoCodec.StartsWith("hevc") || info.VideoCodec.StartsWith("h265");
+            string encPref = Settings.Load().Encoder;
             double dur = st.Out - st.In;
             string src = file;
             var gr = grabber;
@@ -1078,9 +1067,17 @@ namespace ReplayClip
                 {
                     for (int i = 0; i < 50 && gr != null && gr.Busy; i++) Thread.Sleep(100);
                     string err;
-                    int code = RunExport(argsNv, dur, out err);
-                    if (code != 0 && precise && err.IndexOf("nvenc", StringComparison.OrdinalIgnoreCase) >= 0)
-                        code = RunExport(argsSw, dur, out err);
+                    int code;
+                    if (precise)
+                    {
+                        bool hevc = srcHevc;
+                        var kind = Encoders.Resolve(ffmpeg, encPref, ref hevc);
+                        code = RunExport(argsTemplate.Replace(VENC, Encoders.ExportArgs(kind, hevc)), dur, out err);
+                        // Grafikkarten-Encoder streikt -> mit dem Prozessor nochmal
+                        if (code != 0 && kind != EncKind.Cpu)
+                            code = RunExport(argsTemplate.Replace(VENC, Encoders.ExportArgs(EncKind.Cpu, srcHevc)), dur, out err);
+                    }
+                    else code = RunExport(argsTemplate.Replace(VENC, ""), dur, out err);
                     if (code != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length < 1024)
                         throw new Exception(LastLine(err));
                     if (!overwrite)

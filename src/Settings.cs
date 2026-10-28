@@ -50,6 +50,7 @@ namespace ReplayClip
         public int MonitorIndex = 0;
         public int Fps = 60;
         public string Codec = "h264";          // h264 | hevc
+        public string Encoder = "auto";        // auto | nvidia | amd | intel | cpu
         public int BitrateMbps = 30;
         public int BufferMinutes = 5;
         public bool DrawMouse = true;
@@ -86,7 +87,9 @@ namespace ReplayClip
         // Updates (GitHub Releases)
         public bool UpdateCheck = true;
         public string UpdateRepo = Updater.DefaultRepo;
-        public string SkipUpdate = "";        // tiefer Ton beim Drücken, Speicher-Sound danach höher
+        public string SkipUpdate = "";
+        public string LastUpdateCheck = "";    // Zeitpunkt der letzten erfolgreichen Suche (ISO)
+        public string NotifiedUpdate = "";     // für diese Version wurde schon eine Windows-Mitteilung gezeigt        // tiefer Ton beim Drücken, Speicher-Sound danach höher
         public bool OverlayToast = true;
         public int OverlayPos = 0;             // 0 oben rechts, 1 oben links, 2 unten rechts, 3 unten links
 
@@ -151,6 +154,7 @@ namespace ReplayClip
             w("MonitorIndex", MonitorIndex);
             w("Fps", Fps);
             w("Codec", Codec);
+            w("Encoder", Encoder);
             w("BitrateMbps", BitrateMbps);
             w("BufferMinutes", BufferMinutes);
             w("DrawMouse", DrawMouse);
@@ -180,6 +184,8 @@ namespace ReplayClip
             w("UpdateCheck", UpdateCheck);
             w("UpdateRepo", UpdateRepo);
             w("SkipUpdate", SkipUpdate);
+            w("LastUpdateCheck", LastUpdateCheck);
+            w("NotifiedUpdate", NotifiedUpdate);
             w("OverlayToast", OverlayToast);
             w("OverlayPos", OverlayPos);
             w("FolderStructure", FolderStructure);
@@ -232,6 +238,8 @@ namespace ReplayClip
             s.MonitorIndex = GetInt(d, "MonitorIndex", s.MonitorIndex);
             s.Fps = GetInt(d, "Fps", s.Fps);
             s.Codec = GetStr(d, "Codec", s.Codec);
+            s.Encoder = GetStr(d, "Encoder", "auto");
+            if (Array.IndexOf(Encoders.Prefs, s.Encoder) < 0) s.Encoder = "auto";
             s.BitrateMbps = GetInt(d, "BitrateMbps", s.BitrateMbps);
             s.BufferMinutes = Math.Max(1, Math.Min(20, GetInt(d, "BufferMinutes", s.BufferMinutes)));
             s.DrawMouse = GetBool(d, "DrawMouse", s.DrawMouse);
@@ -263,6 +271,8 @@ namespace ReplayClip
             // Platzhalter aus alten Versionen durch das fest eingebaute Repo ersetzen
             if (!Updater.RepoValid(s.UpdateRepo)) s.UpdateRepo = Updater.DefaultRepo;
             s.SkipUpdate = GetStr(d, "SkipUpdate", "");
+            s.LastUpdateCheck = GetStr(d, "LastUpdateCheck", "");
+            s.NotifiedUpdate = GetStr(d, "NotifiedUpdate", "");
             s.OverlayToast = GetBool(d, "OverlayToast", true);
             s.OverlayPos = Math.Max(0, Math.Min(3, GetInt(d, "OverlayPos", 0)));
             s.FolderStructure = Math.Max(0, Math.Min(2, GetInt(d, "FolderStructure", 0)));

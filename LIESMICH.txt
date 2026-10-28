@@ -7,14 +7,16 @@ WAS ES MACHT
 - Hotkey (Standard: Alt+F10) speichert die letzten X Minuten als MP4.
 - Standard: Nach jedem gespeicherten Clip beginnt der Puffer neu – mehrere Clips hintereinander
   enthalten keine doppelten Szenen (abschaltbar: Einstellungen > Aufnahme > Puffer).
-- Bild: Windows Desktop Duplication (GPU) + NVENC der GeForce -> kaum CPU-Last.
+- Bild: Windows Desktop Duplication (GPU) + Encoder der Grafikkarte -> kaum CPU-Last.
+  NVIDIA (NVENC), AMD (AMF) und Intel/Onboard-Grafik (Quick Sync) werden automatisch erkannt;
+  ohne passende Grafikkarte nimmt der Prozessor (x264, höhere CPU-Last). Einstellungen > Aufnahme > Encoder.
 - Ton: bis zu 6 getrennte Tonspuren (z.B. Discord / restlicher PC-Sound / Mikrofon).
   Lautstärke je Spur 0–500 % (leises Mikro verstärken), mit weichem Begrenzer gegen Übersteuern.
 - Bibliothek mit Ordnern je Spiel, Tags, Favoriten und Schnitt-Editor.
 
 VORAUSSETZUNGEN
 - Windows 11 (Per-App-Ton braucht Windows 11 bzw. Win10 ab Build 20348)
-- NVIDIA-Grafikkarte mit aktuellem Treiber
+- Grafikkarte mit aktuellem Treiber empfohlen (NVIDIA, AMD oder Intel) – geht aber auch ohne
 - .NET Framework 4.8 (bei Windows 11 schon dabei)
 - FFmpeg ab Version 6 (das Programm kann es selbst herunterladen)
 
@@ -55,7 +57,8 @@ UPDATES
 - ReplayClip prüft beim Start und alle 6 Stunden auf GitHub, ob es eine neue Version gibt.
   Oben erscheint dann "ReplayClip x.y ist verfügbar" -> Neuerungen ansehen -> "Jetzt aktualisieren".
   Das Update wird geladen, die EXE ausgetauscht und ReplayClip startet neu.
-- Einstellungen > Allgemein > Updates: automatisch suchen an/aus, "Jetzt nach Updates suchen", GitHub-Repo.
+- Einstellungen > Updates: installierte Version, letzte Suche, Neuerungen, "Jetzt aktualisieren",
+  automatisch suchen an/aus. Läuft ReplayClip im Hintergrund, kommt zusätzlich eine Windows-Mitteilung.
 - Liegt ReplayClip in "C:\Programme", fehlen die Schreibrechte – dann einen eigenen Ordner nehmen.
 
 TON TESTEN (Einstellungen > Audiospuren > "Pegel und Test")
